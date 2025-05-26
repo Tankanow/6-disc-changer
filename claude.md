@@ -21,7 +21,7 @@ The 6-Disc Changer application uses:
 - **Backend**: Rust with Axum framework
 - **Templating**: MiniJinja
 - **Frontend Interactivity**: HTMX
-- **Database**: SQLite
+- **Database**: SQLite with Rust sqlx crate
 - **Deployment**: fly.io
 
 ## Development Workflow with Claude
@@ -32,6 +32,11 @@ When working with Claude on this project:
 2. **Implementation**: Get assistance with code generation and optimization
 3. **Testing**: Collaborate on test strategies and debugging
 4. **Documentation**: Generate and refine documentation
+
+### Instructions for Development
+1. Ensure we are on a branch before changing any code. We should never be changing code on `main`.
+2. Use `git` and Conventional Commits for commit messages.
+3. Follow Rust's style guide for code formatting.
 
 ## Best Practices for Claude Collaboration
 

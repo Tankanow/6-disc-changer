@@ -7,3 +7,6 @@ edition = "2024"
 axum = "0.8.4"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 minijinja = { version = "2.10.2", features = ["loader"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "migrate", "chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenv = "0.15.0"
