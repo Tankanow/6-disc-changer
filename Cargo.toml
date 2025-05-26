@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 axum = "0.8.4"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
+minijinja = { version = "2.10.2", features = ["loader"] }
