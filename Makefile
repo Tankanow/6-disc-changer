@@ -14,3 +14,7 @@ docker-run: docker-stop
 docker-stop:
 	-docker stop $(LOCAL_CONTAINER_NAME)
 	-docker rm $(LOCAL_CONTAINER_NAME)
+
+.PHONY: fly-deploy
+fly-deploy:
+	fly deploy
