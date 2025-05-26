@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Users | 6-Disc Changer{% endblock %}
+
+{% block content %}
+<h2>Users Management</h2>
+
+<div class="user-section">
+    <div class="user-form">
+        <h3>Add New User</h3>
+        <form hx-post="/users" hx-target="#user-list" hx-swap="beforeend">
+            <div class="form-group">
+                <label for="spotify_username">Spotify Username:</label>
+                <input type="text" id="spotify_username" name="spotify_username" required>
+            </div>
+            <button type="submit">Add User</button>
+        </form>
+    </div>
+
+    <div class="user-list-container">
+        <h3>User List</h3>
+        <ul id="user-list" hx-get="/users/list" hx-trigger="load">
+            <!-- User list will be loaded here via HTMX -->
+        </ul>
+    </div>
+</div>
+
+<style>
+    .user-section {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+    
+    .user-form {
+        background-color: #f5f5f5;
+        padding: 1.5rem;
+        border-radius: 8px;
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+    }
+    
+    .form-group input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    
+    button {
+        background-color: #0066cc;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    button:hover {
+        background-color: #0055aa;
+    }
+    
+    #user-list {
+        padding-left: 1rem;
+    }
+    
+    .user-item {
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background-color: #f9f9f9;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}

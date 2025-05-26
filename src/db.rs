@@ -3,6 +3,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     Pool, Row, Sqlite,
 };
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 // Database URL
@@ -86,8 +87,33 @@ pub async fn create_user(
     }
 }
 
+/// Get all users
+pub async fn get_all_users(pool: &DbPool) -> Result<Vec<User>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, spotify_username, created_at, updated_at
+        FROM users
+        ORDER BY id
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+    
+    let mut users = Vec::with_capacity(rows.len());
+    for row in rows {
+        users.push(User {
+            id: row.try_get("id")?,
+            spotify_username: row.try_get("spotify_username")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+        });
+    }
+    
+    Ok(users)
+}
+
 // User model
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     pub id: i64,
     pub spotify_username: String,

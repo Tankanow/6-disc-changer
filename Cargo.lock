@@ -1270,6 +1270,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "minijinja",
+ "serde",
  "sqlx",
  "tokio",
 ]
