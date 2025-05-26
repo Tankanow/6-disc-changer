@@ -17,4 +17,5 @@ RUN cargo build --release --bin six-disc-changer
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/six-disc-changer /usr/local/bin
+COPY --from=builder /app/templates /app/templates
 ENTRYPOINT ["/usr/local/bin/six-disc-changer"]
