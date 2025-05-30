@@ -24,7 +24,7 @@ To guide an AI assistant in creating a detailed, step-by-step task list in Markd
 5.  **Phase 2: Generate Sub-Tasks:** Once the user confirms, break down each parent task into smaller, actionable sub-tasks necessary to complete the parent task. Ensure sub-tasks logically follow from the parent task and cover the implementation details implied by the PRD.
 6.  **Identify Relevant Files:** Based on the tasks and PRD, identify potential files that will need to be created or modified. List these under the `Relevant Files` section, including corresponding test files if applicable.
 7.  **Generate Final Output:** Combine the parent tasks, sub-tasks, relevant files, and notes into the final Markdown structure.
-8.  **Save Task List:** Save the generated document in the `/tasks/` directory with the filename `tasks-[prd-file-name].md`, where `[prd-file-name]` matches the base name of the input PRD file (e.g., if the input was `prd-user-profile-editing.md`, the output is `tasks-prd-user-profile-editing.md`).
+8.  **Save Task List:** Save the generated document in the `/tasks/` directory with the filename `[prd-file-name]-tasks.md`, where `[prd-file-name]` matches the base name of the input PRD file (e.g., if the input was `prd-user-profile-editing.md`, the output is `prd-user-profile-editing-tasks.md`).
 
 ## Output Format
 
@@ -33,17 +33,17 @@ The generated task list _must_ follow this structure:
 ```markdown
 ## Relevant Files
 
-- `path/to/potential/file1.ts` - Brief description of why this file is relevant (e.g., Contains the main component for this feature).
-- `path/to/file1.test.ts` - Unit tests for `file1.ts`.
-- `path/to/another/file.tsx` - Brief description (e.g., API route handler for data submission).
-- `path/to/another/file.test.tsx` - Unit tests for `another/file.tsx`.
-- `lib/utils/helpers.ts` - Brief description (e.g., Utility functions needed for calculations).
-- `lib/utils/helpers.test.ts` - Unit tests for `helpers.ts`.
+- `path/to/potential/file1.rs` - Brief description of why this file is relevant (e.g., Contains the main component for this feature).
+- `path/to/potential/file1.rs` - Unit tests for file go in the SAME file under the `test` module according to [Rust Best Practices](https://doc.rust-lang.org/book/ch11-03-test-organization.html).
+- `path/to/another/file.rs` - Brief description (e.g., API route handler for data submission).
+- `path/to/another/file.rs` - Unit tests for `another/file.rs`.
+- `lib/utils/helpers.rs` - Brief description (e.g., Utility functions needed for calculations).
+- `lib/utils/helpers.rs` - Unit tests for `helpers.rs`.
 
 ### Notes
 
-- Unit tests should typically be placed alongside the code files they are testing (e.g., `MyComponent.tsx` and `MyComponent.test.tsx` in the same directory).
-- Use `npx jest [optional/path/to/test/file]` to run tests. Running without a path executes all tests found by the Jest configuration.
+- Unit tests should placed inside the same code files they are testing under a module called `test`.
+- Use `cargo test [optional/path/to/test/file]` to run tests. Running without a path executes all tests found by the cargo configuration.
 
 ## Tasks
 
