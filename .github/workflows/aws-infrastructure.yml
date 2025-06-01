@@ -76,8 +76,6 @@ jobs:
 
       - name: Preview infrastructure changes
         working-directory: ./pulumi
-        env:
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
         run: |
           echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
           make -f ../Makefile pulumi-preview
@@ -86,7 +84,6 @@ jobs:
         if: github.event_name != 'pull_request'
         working-directory: ./pulumi
         env:
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           echo "Deploying infrastructure to: ${{ github.event.inputs.environment || 'dev' }}"
@@ -99,8 +96,6 @@ jobs:
       - name: Output resource information
         if: github.event_name != 'pull_request' && success()
         working-directory: ./pulumi
-        env:
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
         run: |
           echo "S3 Bucket: $BUCKET_NAME"
           echo "IAM Role: $ROLE_ARN"
