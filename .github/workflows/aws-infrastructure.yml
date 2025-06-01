@@ -57,11 +57,6 @@ jobs:
           export PATH=$PATH:$HOME/.pulumi/bin
           echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
 
-      - name: Configure Pulumi backend
-        run: |
-          # Use AWS S3 backend for Pulumi state
-          make pulumi-login
-
       - name: Set ENVIRONMENT
         run: |
           ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
@@ -73,11 +68,13 @@ jobs:
 
       - name: Refresh Pulumi stack
         run: |
+          make pulumi-login
           make pulumi-refresh ENVIRONMENT=$ENVIRONMENT
 
       - name: Preview infrastructure changes
         run: |
           echo "Previewing changes for environment: $ENVIRONMENT"
+          make pulumi-login
           make pulumi-preview ENVIRONMENT=$ENVIRONMENT
           make pulumi-export ENVIRONMENT=$ENVIRONMENT
 
@@ -87,6 +84,7 @@ jobs:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           echo "Deploying infrastructure to: $ENVIRONMENT"
+          make pulumi-login
           make pulumi-up ENVIRONMENT=$ENVIRONMENT
 
           # Save stack outputs to environment for the next steps
