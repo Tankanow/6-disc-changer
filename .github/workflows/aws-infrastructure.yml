@@ -8,6 +8,7 @@ on:
     paths:
       - 'pulumi/**'
       - '.github/workflows/aws-infrastructure.yml'
+      - 'Makefile'
   pull_request:
     branches: [main]
     paths:
