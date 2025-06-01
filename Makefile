@@ -38,7 +38,6 @@ pulumi-refresh: pulumi-select
 .PHONY: pulumi-preview
 pulumi-preview: pulumi-select
 	cd pulumi && pulumi preview --debug
-	exit 1
 
 .PHONY: pulumi-export
 pulumi-export: pulumi-select

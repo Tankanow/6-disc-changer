@@ -66,15 +66,17 @@ jobs:
           echo "Using environment: $ENVIRONMENT"
           echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
 
-      - name: Refresh Pulumi stack
+      - name: Pulumi Login
         run: |
           make pulumi-login
+
+      - name: Refresh Pulumi stack
+        run: |
           make pulumi-refresh ENVIRONMENT=$ENVIRONMENT
 
       - name: Preview infrastructure changes
         run: |
           echo "Previewing changes for environment: $ENVIRONMENT"
-          make pulumi-login
           make pulumi-preview ENVIRONMENT=$ENVIRONMENT
           make pulumi-export ENVIRONMENT=$ENVIRONMENT
 
@@ -84,7 +86,6 @@ jobs:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           echo "Deploying infrastructure to: $ENVIRONMENT"
-          make pulumi-login
           make pulumi-up ENVIRONMENT=$ENVIRONMENT
 
           # Save stack outputs to environment for the next steps
