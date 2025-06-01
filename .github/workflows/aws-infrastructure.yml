@@ -79,10 +79,11 @@ jobs:
         run: |
           echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
           make pulumi-preview ENVIRONMENT=$ENVIRONMENT
+          make pulumi-export ENVIRONMENT=$ENVIRONMENT
+          exit 1
 
       - name: Deploy infrastructure
         if: github.event_name != 'pull_request'
-        working-directory: ./pulumi
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
@@ -95,16 +96,13 @@ jobs:
 
       - name: Output resource information
         if: github.event_name != 'pull_request' && success()
-        working-directory: ./pulumi
         run: |
           echo "S3 Bucket: $BUCKET_NAME"
           echo "IAM Role: $ROLE_ARN"
           echo "Region: ${{ secrets.AWS_REGION }}"
 
       # State is now stored in S3, no need to upload as artifact
-
       - name: Create deployment summary
-        if: always()
         run: |
           echo "## Pulumi Infrastructure Deployment" >> $GITHUB_STEP_SUMMARY
           if [ "${{ job.status }}" = "success" ]; then
