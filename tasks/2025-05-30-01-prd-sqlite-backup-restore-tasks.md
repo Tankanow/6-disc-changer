@@ -7,6 +7,7 @@
 - `src/database/mod.rs` - Database module exports and error types for backup/restore operations.
 - `src/database/storage/mod.rs` - Storage trait definition and provider factory for abstracting storage backends.
 - `src/database/storage/local_storage.rs` - Local filesystem implementation of storage for development and fallbacks.
+- `src/database/storage/s3_storage.rs` - AWS S3 implementation of storage for database backups.
 - `src/config.rs` - Configuration settings for backup/restore functionality.
 - `src/main.rs` - Entry point where database restoration happens on startup.
 - `.github/workflows/aws-infrastructure.yml` - GitHub Actions workflow for AWS infrastructure provisioning.
@@ -14,6 +15,7 @@
 - `docs/2025-06-01-01-configure-github-actions-aws-permissions.md` - Documentation for setting up AWS IAM OIDC with GitHub Actions.
 - `docs/2025-06-01-02-fly-io-oidc-setup.md` - Documentation for configuring AWS IAM to trust fly.io's OIDC provider.
 - `docs/2025-06-01-03-local-development-fallbacks.md` - Documentation for local fallback mechanisms when AWS is unavailable.
+- `docs/2025-06-01-04-aws-infrastructure-setup-access-patterns.md` - Documentation for AWS infrastructure setup and access patterns.
 - `scripts/setup-github-oidc.sh` - Bash script to automate AWS OIDC provider and IAM role setup for GitHub Actions.
 
 ### Notes
@@ -23,7 +25,7 @@
 
 ## Tasks
 
-- [ ] 1.0 Set up AWS Infrastructure
+- [x] 1.0 Set up AWS Infrastructure
   - [x] 1.1 Create Pulumi YAML project structure for AWS resources
   - [x] 1.2 Define S3 bucket with server-side encryption and public access blocked
   - [x] 1.3 Configure IAM roles with least privilege permissions for S3 access
@@ -32,7 +34,7 @@
   - [x] 1.6 Create local development fallbacks when AWS is unavailable
   - [x] 1.7 Document AWS infrastructure setup and access patterns
 - [ ] 2.0 Implement SQLite Database Backup System
-  - [ ] 2.1 Create S3 client implementation using AWS SDK
+  - [x] 2.1 Create S3 client implementation using AWS SDK
   - [ ] 2.2 Implement SQLite backup operations with proper locking mechanisms
   - [ ] 2.3 Design timestamp-based naming convention for backup files
   - [ ] 2.4 Ensure backup operations run in background threads

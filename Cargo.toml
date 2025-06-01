@@ -14,6 +14,13 @@ serde = { version = "1.0", features = ["derive"] }
 async-trait = "0.1.68"
 thiserror = "1.0.40"
 futures = "0.3.28"
+# AWS SDK dependencies
+aws-config = "0.55.3"
+aws-sdk-s3 = "0.28.0"
+aws-credential-types = "0.55.3"
+aws-types = "0.55.3"
+tracing = "0.1.37"
 
 [dev-dependencies]
 tempfile = "3.5.0"
+mockall = "0.11.4"

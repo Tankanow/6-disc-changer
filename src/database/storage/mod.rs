@@ -12,8 +12,7 @@ use crate::database::Result;
 
 // Re-export storage implementations
 pub mod local_storage;
-// This will be implemented in a future task
-// pub mod s3_storage;
+pub mod s3_storage;
 
 /// Provides a unified interface for backup storage operations
 /// 
@@ -77,9 +76,15 @@ pub async fn create_storage_provider(config: &BackupConfig) -> Result<Box<dyn St
 
     // Check if we should use AWS
     if config.should_use_aws().await {
-        // TODO: In future implementation, create and return S3 storage
-        // For now, fall back to local storage
-        Ok(Box::new(local_storage::LocalStorageProvider::new(config)))
+        // Create and return S3 storage provider
+        match s3_storage::S3StorageProvider::new(config).await {
+            Ok(provider) => Ok(Box::new(provider)),
+            Err(e) => {
+                // Log the error and fall back to local storage
+                eprintln!("Failed to create S3 storage provider: {}, falling back to local storage", e);
+                Ok(Box::new(local_storage::LocalStorageProvider::new(config)))
+            }
+        }
     } else {
         // Use local storage
         Ok(Box::new(local_storage::LocalStorageProvider::new(config)))

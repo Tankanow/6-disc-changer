@@ -67,6 +67,9 @@ impl BackupConfig {
 
     /// Check if AWS should be used based on configuration and connectivity
     pub async fn should_use_aws(&self) -> bool {
+        use aws_sdk_s3::Client as S3Client;
+        use aws_types::region::Region;
+        
         // If AWS is disabled in config, don't use it
         if !self.use_aws {
             return false;
@@ -77,9 +80,33 @@ impl BackupConfig {
             return false;
         }
 
-        // TODO: Add actual AWS connectivity check when AWS SDK is implemented
-        // For now, just return the configured value
-        self.use_aws
+        // Try to initialize AWS client and check connectivity
+        match async {
+            // Configure AWS SDK
+            let aws_config = aws_config::from_env()
+                .region(Region::new(self.aws_region.clone()))
+                .load()
+                .await;
+
+            // Create S3 client
+            let client = S3Client::new(&aws_config);
+
+            // Try to check if the bucket exists
+            client.head_bucket()
+                .bucket(&self.s3_bucket_name)
+                .send()
+                .await
+        }.await {
+            Ok(_) => {
+                // Bucket exists and is accessible
+                true
+            }
+            Err(err) => {
+                // Log the error and return false
+                eprintln!("AWS S3 connectivity check failed: {}, falling back to local storage", err);
+                false
+            }
+        }
     }
 
     /// Ensure local backup directory exists
