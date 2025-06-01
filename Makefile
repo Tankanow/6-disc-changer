@@ -36,7 +36,7 @@ pulumi-refresh:
 	cd pulumi && pulumi refresh --yes
 
 .PHONY: pulumi-preview
-pulumi-preview:
+pulumi-preview: pulumi-select
 	cd pulumi && pulumi preview
 
 .PHONY: pulumi-up
