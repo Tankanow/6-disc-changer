@@ -72,3 +72,10 @@ When contributing to this project with Claude's assistance:
 - [MiniJinja Documentation](https://docs.rs/minijinja/latest/minijinja/)
 - [HTMX Documentation](https://htmx.org/)
 - [Spotify Web API Documentation](https://developer.spotify.com/documentation/web-api)
+
+## Code Changes
+- AI *must* ask before changing any code.
+
+## Questions
+- When I ask a question to diagnose a failure, e.g. `Why is this Pulumi stack failing?`, AI *must* diagnose the
+ issue *without touching code*. AI *must* ask before changing any code.
