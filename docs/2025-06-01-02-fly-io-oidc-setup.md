@@ -36,7 +36,7 @@ aching permissions to the role for accessing S3 buckets
 ```yaml
 # OIDC Provider for fly.io
 flyIoOidcProvider:
-  type: aws:iam:OpenIDConnectProvider
+  type: aws:iam:OidcProvider
   properties:
     url: "https://oidc.fly.io/${flyOrgSlug}"
     clientIdList:

@@ -21,7 +21,7 @@ fly-deploy:
 
 .PHONY: aws-login
 aws-login:
-	echo 'aws.login 6-disc-changer.AdministratorAccess'
+	@echo 'aws.login 6-disc-changer.AdministratorAccess'
 
 .PHONY: pulumi-login
 pulumi-login:

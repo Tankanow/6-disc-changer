@@ -4,7 +4,7 @@ description: AWS infrastructure for SQLite database backup and restore system
 resources:
   # OIDC Provider for fly.io
   flyIoOidcProvider:
-    type: aws:iam:OpenIDConnectProvider
+    type: aws:iam:OidcProvider
     properties:
       url: "https://oidc.fly.io/${flyOrgSlug}"
       clientIdList:
@@ -42,7 +42,6 @@ resources:
       rules:
         - applyServerSideEncryptionByDefault:
             sseAlgorithm: AES256
-
   # IAM Role for the application to use when accessing S3
   backupRestoreRole:
     type: aws:iam:Role
@@ -73,7 +72,6 @@ resources:
       tags:
         Application: "6-disc-changer"
         Environment: ${pulumi.stack}
-
   # IAM Policy with least privilege permissions for S3 operations
   backupRestorePolicy:
     type: aws:iam:Policy
@@ -102,24 +100,20 @@ resources:
             }
           ]
         }
-
   # Attach the policy to the role
   backupRestorePolicyAttachment:
     type: aws:iam:RolePolicyAttachment
     properties:
       role: ${backupRestoreRole.name}
       policyArn: ${backupRestorePolicy.arn}
-
 outputs:
   # Export the name of the bucket
   bucketName: ${backupBucket.id}
   # Export the role ARN for use in application configuration
   backupRestoreRoleArn: ${backupRestoreRole.arn}
-
-
 config:
   pulumi:tags:
     value:
       pulumi:template: aws-yaml
-  sqlite-backup-restore:flyOrgSlug:
-    description: "The slug of your fly.io organization"
+packages:
+  aws: aws@6.81.0
