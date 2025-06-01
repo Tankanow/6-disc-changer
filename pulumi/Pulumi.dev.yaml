@@ -2,5 +2,6 @@ config:
   aws:region: "us-west-2"
   sqlite-backup-restore:backupBucketName: "6-disc-changer-dev-sqlite-backups"
   sqlite-backup-restore:awsAccountId: "214549340182"
-  sqlite-backup-restore:appName: "my-fly-app-dev"
+  sqlite-backup-restore:flyAppName: "my-fly-app-dev"
+  sqlite-backup-restore:flyOrgSlug: "my-fly-org"
 encryptionsalt: v1:vX2SeSN6Hrs=:v1:kauNZMOGAKCnQcm7:rNMtYLoxq9CkK7V6SpeRxpmRTiShJA==

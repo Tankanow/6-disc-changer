@@ -2,6 +2,15 @@ name: sqlite-backup-restore
 runtime: yaml
 description: AWS infrastructure for SQLite database backup and restore system
 resources:
+  # OIDC Provider for fly.io
+  flyIoOidcProvider:
+    type: aws:iam:OpenIDConnectProvider
+    properties:
+      url: "https://oidc.fly.io/${flyOrgSlug}"
+      clientIdList:
+        - "sts.amazonaws.com"
+      thumbprintList:
+        - "7e82aecb58c09e2aff05bc8fbc1c46229bfcfb42d5821703f850b7c335cb4685" # fly.io OIDC thumbprint
   # Create an AWS resource (S3 Bucket)
   backupBucket:
     type: aws:s3:BucketV2
@@ -40,7 +49,6 @@ resources:
     properties:
       name: six-disc-changer-backup-restore-${pulumi.stack}
       description: "Role for 6-disc-changer to perform database backup and restore operations"
-      # Note: This placeholder trust policy will be replaced in task 1.5 with proper fly.io OIDC trust relationship
       assumeRolePolicy: |
         {
           "Version": "2012-10-17",
@@ -48,9 +56,17 @@ resources:
             {
               "Effect": "Allow",
               "Principal": {
-                "AWS": "${awsAccountId}"
+                "Federated": "${flyIoOidcProvider.arn}"
               },
-              "Action": "sts:AssumeRole"
+              "Action": "sts:AssumeRoleWithWebIdentity",
+              "Condition": {
+                "StringEquals": {
+                  "oidc.fly.io/${flyOrgSlug}:aud": "sts.amazonaws.com"
+                },
+                "StringLike": {
+                  "oidc.fly.io/${flyOrgSlug}:sub": "app:${flyAppName}"
+                }
+              }
             }
           ]
         }
@@ -105,3 +121,5 @@ config:
   pulumi:tags:
     value:
       pulumi:template: aws-yaml
+  sqlite-backup-restore:flyOrgSlug:
+    description: "The slug of your fly.io organization"

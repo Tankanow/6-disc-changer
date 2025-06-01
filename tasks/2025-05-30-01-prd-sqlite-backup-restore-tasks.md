@@ -8,7 +8,8 @@
 - `src/main.rs` - Entry point where database restoration happens on startup.
 - `.github/workflows/aws-infrastructure.yml` - GitHub Actions workflow for AWS infrastructure provisioning.
 - `pulumi/` - Infrastructure as Code for AWS resources using Pulumi YAML.
-- `docs/2025-06-01-configure-github-actions-aws-permissions.md` - Documentation for setting up AWS IAM OIDC with GitHub Actions.
+- `docs/2025-06-01-01-configure-github-actions-aws-permissions.md` - Documentation for setting up AWS IAM OIDC with GitHub Actions.
+- `docs/2025-06-01-02-fly-io-oidc-setup.md` - Documentation for configuring AWS IAM to trust fly.io's OIDC provider.
 - `scripts/setup-github-oidc.sh` - Bash script to automate AWS OIDC provider and IAM role setup for GitHub Actions.
 
 ### Notes
@@ -23,7 +24,7 @@
   - [x] 1.2 Define S3 bucket with server-side encryption and public access blocked
   - [x] 1.3 Configure IAM roles with least privilege permissions for S3 access
   - [x] 1.4 Implement GitHub Actions workflow to deploy Pulumi infrastructure
-  - [ ] 1.5 Set up trust relationship between IAM roles and fly.io OpenID Connect
+  - [x] 1.5 Set up trust relationship between IAM roles and fly.io OpenID Connect
   - [ ] 1.6 Create local development fallbacks when AWS is unavailable
   - [ ] 1.7 Document AWS infrastructure setup and access patterns
 - [ ] 2.0 Implement SQLite Database Backup System
