@@ -2191,6 +2191,7 @@ dependencies = [
  "futures",
  "minijinja",
  "mockall",
+ "rand",
  "serde",
  "sqlx",
  "tempfile",

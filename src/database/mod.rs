@@ -5,6 +5,7 @@ pub mod storage;
 
 // Database modules
 pub mod backup;
+pub mod backup_naming;
 // These will be implemented in future tasks
 // mod restore;
 // mod scheduler;

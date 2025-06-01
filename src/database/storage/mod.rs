@@ -25,8 +25,9 @@ pub trait StorageProvider: Send + Sync {
     /// 
     /// # Arguments
     /// * `backup_path` - Path to the backup file to store
-    /// * `backup_id` - Unique identifier for the backup (usually a timestamp)
-    async fn store_backup(&self, backup_path: &Path, backup_id: &str) -> Result<()>;
+    /// * `backup_id` - Unique identifier for the backup (timestamp-based)
+    /// * `environment` - Environment identifier (e.g., "dev", "prod")
+    async fn store_backup(&self, backup_path: &Path, backup_id: &str, environment: &str) -> Result<()>;
     
     /// Retrieve a backup file from storage
     /// 
@@ -40,10 +41,26 @@ pub trait StorageProvider: Send + Sync {
     /// Returns a list of backup IDs sorted by creation time (newest first)
     async fn list_backups(&self) -> Result<Vec<String>>;
     
+    /// List all available backups for a specific environment
+    /// 
+    /// # Arguments
+    /// * `environment` - Environment identifier (e.g., "dev", "prod")
+    /// 
+    /// Returns a list of backup IDs sorted by creation time (newest first)
+    async fn list_environment_backups(&self, environment: &str) -> Result<Vec<String>>;
+    
     /// Get the latest backup ID from storage
     /// 
     /// Returns the ID of the most recent backup, or None if no backups exist
     async fn get_latest_backup(&self) -> Result<Option<String>>;
+    
+    /// Get the latest backup ID for a specific environment
+    /// 
+    /// # Arguments
+    /// * `environment` - Environment identifier (e.g., "dev", "prod")
+    /// 
+    /// Returns the ID of the most recent backup for the environment, or None if no backups exist
+    async fn get_latest_environment_backup(&self, environment: &str) -> Result<Option<String>>;
     
     /// Delete a backup from storage
     /// 
@@ -62,6 +79,13 @@ pub trait StorageProvider: Send + Sync {
     /// # Arguments
     /// * `keep_count` - Number of most recent backups to keep
     async fn cleanup_old_backups(&self, keep_count: usize) -> Result<()>;
+    
+    /// Clean up old backups for a specific environment
+    /// 
+    /// # Arguments
+    /// * `environment` - Environment identifier (e.g., "dev", "prod")
+    /// * `keep_count` - Number of most recent backups to keep
+    async fn cleanup_environment_backups(&self, environment: &str, keep_count: usize) -> Result<()>;
 }
 
 /// Create a storage provider based on the current configuration

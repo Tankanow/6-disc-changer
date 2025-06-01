@@ -22,6 +22,7 @@ aws-types = "0.55.3"
 tracing = "0.1.37"
 # SQLite dependencies
 tempfile = "3.5.0"
+rand = "0.8.5"
 
 [dev-dependencies]
 mockall = "0.11.4"

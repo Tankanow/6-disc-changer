@@ -63,25 +63,30 @@ impl S3StorageProvider {
         })
     }
 
-    /// Get the S3 key for a backup with the given ID
-    fn get_backup_key(&self, backup_id: &str) -> String {
-        format!("{}backup-{}.db", self.prefix, backup_id)
+    /// Get the S3 key for a backup with the given ID and environment
+    fn get_backup_key(&self, backup_id: &str, environment: &str) -> String {
+        format!("{}{}/backup-{}.db", self.prefix, environment, backup_id)
     }
 
     /// Extract backup ID from an S3 key
     fn extract_backup_id(&self, key: &str) -> Option<String> {
-        // Extract backup ID from key (format: backups/backup-{id}.db)
-        let prefix = format!("{}backup-", self.prefix);
-        if key.starts_with(&prefix) && key.ends_with(".db") {
-            let id = key
-                .strip_prefix(&prefix)
-                .unwrap()
-                .strip_suffix(".db")
-                .unwrap();
-            Some(id.to_string())
-        } else {
-            None
+        // Extract backup ID from key (format: backups/{env}/backup-{id}.db)
+        if key.ends_with(".db") {
+            // Split by '/' to separate prefix, environment, and filename
+            let parts: Vec<&str> = key.split('/').collect();
+            if parts.len() >= 2 {
+                let filename = parts.last().unwrap();
+                if filename.starts_with("backup-") && filename.ends_with(".db") {
+                    let id = filename
+                        .strip_prefix("backup-")
+                        .unwrap()
+                        .strip_suffix(".db")
+                        .unwrap();
+                    return Some(id.to_string());
+                }
+            }
         }
+        None
     }
 
     /// Map AWS S3 errors to DatabaseError
@@ -120,14 +125,14 @@ impl S3StorageProvider {
 
 #[async_trait]
 impl StorageProvider for S3StorageProvider {
-    async fn store_backup(&self, backup_path: &Path, backup_id: &str) -> Result<()> {
+    async fn store_backup(&self, backup_path: &Path, backup_id: &str, environment: &str) -> Result<()> {
         // Read the backup file
         let body = match tokio_fs::read(backup_path).await {
             Ok(content) => content,
             Err(e) => return Err(DatabaseError::Io(e)),
         };
 
-        let key = self.get_backup_key(backup_id);
+        let key = self.get_backup_key(backup_id, environment);
         
         // Upload to S3
         debug!("Uploading backup {} to S3 bucket {} with key {}", backup_id, self.bucket, key);
@@ -151,7 +156,11 @@ impl StorageProvider for S3StorageProvider {
     }
     
     async fn retrieve_backup(&self, backup_id: &str, destination_path: &Path) -> Result<()> {
-        let key = self.get_backup_key(backup_id);
+        // Try to parse the environment from the backup ID
+        let environment = crate::database::backup_naming::get_environment_from_backup_id(backup_id)
+            .unwrap_or_else(|| String::from("dev")); // Default to dev if parsing fails
+            
+        let key = self.get_backup_key(backup_id, &environment);
         
         debug!("Retrieving backup {} from S3 bucket {} with key {}", backup_id, self.bucket, key);
         
@@ -198,7 +207,7 @@ impl StorageProvider for S3StorageProvider {
     }
     
     async fn list_backups(&self) -> Result<Vec<String>> {
-        debug!("Listing backups in S3 bucket {}", self.bucket);
+        debug!("Listing all backups in S3 bucket {}", self.bucket);
         
         // List objects in the bucket with the backup prefix
         let resp = match self.client
@@ -228,10 +237,51 @@ impl StorageProvider for S3StorageProvider {
             }
         }
         
-        // Sort backups by ID (which is timestamp) in descending order
+        // Sort backups by ID (which is timestamp-based) in descending order
         backup_ids.sort_by(|a, b| b.cmp(a));
         
         debug!("Found {} backups in S3", backup_ids.len());
+        Ok(backup_ids)
+    }
+    
+    async fn list_environment_backups(&self, environment: &str) -> Result<Vec<String>> {
+        debug!("Listing backups for environment {} in S3 bucket {}", environment, self.bucket);
+        
+        // Create environment-specific prefix
+        let env_prefix = format!("{}{}/", self.prefix, environment);
+        
+        // List objects in the bucket with the environment-specific prefix
+        let resp = match self.client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .prefix(&env_prefix)
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) => {
+                error!("Failed to list environment backups in S3: {}", err);
+                return Err(self.map_s3_error(err, "list_environment_backups"));
+            }
+        };
+        
+        // Extract backup IDs from the object keys
+        let mut backup_ids = Vec::new();
+        
+        if let Some(objects) = resp.contents {
+            for obj in objects {
+                if let Some(key) = &obj.key {
+                    if let Some(id) = self.extract_backup_id(key) {
+                        backup_ids.push(id);
+                    }
+                }
+            }
+        }
+        
+        // Sort backups by ID (which is timestamp-based) in descending order
+        backup_ids.sort_by(|a, b| b.cmp(a));
+        
+        debug!("Found {} backups for environment {} in S3", backup_ids.len(), environment);
         Ok(backup_ids)
     }
     
@@ -240,8 +290,17 @@ impl StorageProvider for S3StorageProvider {
         Ok(backups.into_iter().next())
     }
     
+    async fn get_latest_environment_backup(&self, environment: &str) -> Result<Option<String>> {
+        let backups = self.list_environment_backups(environment).await?;
+        Ok(backups.into_iter().next())
+    }
+    
     async fn delete_backup(&self, backup_id: &str) -> Result<()> {
-        let key = self.get_backup_key(backup_id);
+        // Try to parse the environment from the backup ID
+        let environment = crate::database::backup_naming::get_environment_from_backup_id(backup_id)
+            .unwrap_or_else(|| String::from("dev")); // Default to dev if parsing fails
+            
+        let key = self.get_backup_key(backup_id, &environment);
         
         debug!("Deleting backup {} from S3 bucket {} with key {}", backup_id, self.bucket, key);
         
@@ -265,7 +324,11 @@ impl StorageProvider for S3StorageProvider {
     }
     
     async fn backup_exists(&self, backup_id: &str) -> Result<bool> {
-        let key = self.get_backup_key(backup_id);
+        // Try to parse the environment from the backup ID
+        let environment = crate::database::backup_naming::get_environment_from_backup_id(backup_id)
+            .unwrap_or_else(|| String::from("dev")); // Default to dev if parsing fails
+            
+        let key = self.get_backup_key(backup_id, &environment);
         
         debug!("Checking if backup {} exists in S3 bucket {} with key {}", backup_id, self.bucket, key);
         
@@ -318,6 +381,25 @@ impl StorageProvider for S3StorageProvider {
         
         Ok(())
     }
+    
+    async fn cleanup_environment_backups(&self, environment: &str, keep_count: usize) -> Result<()> {
+        let backups = self.list_environment_backups(environment).await?;
+        
+        // If we have more backups than the limit, delete the oldest ones
+        if backups.len() > keep_count {
+            info!("Cleaning up old backups for environment {} in S3, keeping {} most recent", 
+                environment, keep_count);
+            
+            for backup_id in backups.iter().skip(keep_count) {
+                debug!("Deleting old backup {} from environment {}", backup_id, environment);
+                self.delete_backup(backup_id).await?;
+            }
+            
+            info!("Successfully cleaned up old backups for environment {} in S3", environment);
+        }
+        
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -362,7 +444,7 @@ mod tests {
             temp_dir: PathBuf::from("/tmp"),
         };
         
-        assert_eq!(provider.get_backup_key("123"), "backups/backup-123.db");
+        assert_eq!(provider.get_backup_key("123", "dev"), "backups/dev/backup-123.db");
     }
     
     #[test]
@@ -378,7 +460,8 @@ mod tests {
             temp_dir: PathBuf::from("/tmp"),
         };
         
-        assert_eq!(provider.extract_backup_id("backups/backup-123.db"), Some("123".to_string()));
-        assert_eq!(provider.extract_backup_id("backups/something-else.db"), None);
+        assert_eq!(provider.extract_backup_id("backups/dev/backup-123.db"), Some("123".to_string()));
+        assert_eq!(provider.extract_backup_id("backups/prod/backup-456.db"), Some("456".to_string()));
+        assert_eq!(provider.extract_backup_id("backups/dev/something-else.db"), None);
     }
 }

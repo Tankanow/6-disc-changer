@@ -1,6 +1,7 @@
 ## Relevant Files
 
 - `src/database/backup.rs` - Handles SQLite database backup operations to S3.
+- `src/database/backup_naming.rs` - Provides timestamp-based naming convention for backup files.
 - `src/database/restore.rs` - Handles SQLite database restoration from S3 backups.
 - `src/database/s3_client.rs` - AWS S3 client implementation for database operations.
 - `src/database/scheduler.rs` - Manages scheduled backup operations.
@@ -36,7 +37,7 @@
 - [ ] 2.0 Implement SQLite Database Backup System
   - [x] 2.1 Create S3 client implementation using AWS SDK
   - [x] 2.2 Implement SQLite backup operations with proper locking mechanisms
-  - [ ] 2.3 Design timestamp-based naming convention for backup files
+  - [x] 2.3 Design timestamp-based naming convention for backup files
   - [ ] 2.4 Ensure backup operations run in background threads
   - [ ] 2.5 Add configuration options for backup paths and S3 bucket information
   - [ ] 2.6 Implement backup status tracking and result verification

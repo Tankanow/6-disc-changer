@@ -16,6 +16,10 @@ pub struct BackupConfig {
     pub local_backup_dir: PathBuf,
     /// Maximum number of local backups to keep
     pub local_backup_max_count: usize,
+    /// Environment identifier for backups (e.g., "dev", "prod")
+    pub environment: String,
+    /// Optional server identifier for multi-server deployments
+    pub server_id: Option<String>,
 }
 
 impl Default for BackupConfig {
@@ -27,6 +31,8 @@ impl Default for BackupConfig {
             aws_role_arn: None,
             local_backup_dir: PathBuf::from("./backups"),
             local_backup_max_count: 10,
+            environment: String::from("dev"),
+            server_id: None,
         }
     }
 }
@@ -54,6 +60,11 @@ impl BackupConfig {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(10);
+            
+        let environment = env::var("BACKUP_ENVIRONMENT")
+            .unwrap_or_else(|_| String::from("dev"));
+            
+        let server_id = env::var("BACKUP_SERVER_ID").ok();
 
         Self {
             use_aws,
@@ -62,6 +73,8 @@ impl BackupConfig {
             aws_role_arn,
             local_backup_dir,
             local_backup_max_count,
+            environment,
+            server_id,
         }
     }
 

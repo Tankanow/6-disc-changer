@@ -12,6 +12,8 @@ use tempfile::tempdir;
 use tokio::sync::Mutex;
 use std::sync::Arc;
 
+use crate::database::backup_naming::BackupNamingService;
+
 use crate::database::{Result, DatabaseError};
 
 // Implement From<SqlxError> for DatabaseError
@@ -90,15 +92,23 @@ pub struct BackupManager {
     storage: Arc<dyn StorageProvider>,
     /// Mutex to ensure only one backup runs at a time
     backup_mutex: Mutex<()>,
+    /// Service for generating backup IDs
+    naming_service: BackupNamingService,
 }
 
 impl BackupManager {
     /// Create a new backup manager
-    pub fn new(db_pool: Pool<Sqlite>, storage: Arc<dyn StorageProvider>) -> Self {
+    pub fn new(
+        db_pool: Pool<Sqlite>, 
+        storage: Arc<dyn StorageProvider>,
+        environment: &str,
+        server_id: Option<&str>,
+    ) -> Self {
         Self {
             db_pool,
             storage,
             backup_mutex: Mutex::new(()),
+            naming_service: BackupNamingService::new(environment, server_id),
         }
     }
     
@@ -111,8 +121,8 @@ impl BackupManager {
         let start_time = Instant::now();
         let timestamp = Utc::now();
         
-        // Generate backup ID using timestamp
-        let backup_id = format!("{}", timestamp.timestamp());
+        // Generate backup ID using the naming service
+        let backup_id = self.naming_service.generate_backup_id_with_time(timestamp);
         
         // Create temporary directory for backup
         let temp_dir = tempdir().map_err(|e| DatabaseError::Io(e))?;
@@ -137,7 +147,11 @@ impl BackupManager {
                     .unwrap_or(0);
                 
                 // Store the backup with the storage provider
-                if let Err(e) = self.storage.store_backup(&backup_path, &backup_id).await {
+                if let Err(e) = self.storage.store_backup(
+                    &backup_path, 
+                    &backup_id, 
+                    &self.naming_service.environment_dir()
+                ).await {
                     return Ok(BackupResult {
                         backup_id,
                         timestamp,
@@ -339,7 +353,7 @@ mod tests {
         let storage = Arc::new(LocalStorageProvider::new(&config));
         
         // Create backup manager
-        let backup_manager = BackupManager::new(pool.clone(), storage);
+        let backup_manager = BackupManager::new(pool.clone(), storage, "test", None);
         
         // Create backup with default options
         let result = backup_manager.create_backup(BackupOptions::default()).await?;
