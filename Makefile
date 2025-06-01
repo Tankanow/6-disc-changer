@@ -25,20 +25,20 @@ aws-login:
 
 .PHONY: pulumi-login
 pulumi-login:
-	pulumi login 's3://pulumi-state-214549340182?region=us-east-1&awssdk=v2'
+	cd pulumi && pulumi login 's3://pulumi-state-214549340182?region=us-east-1&awssdk=v2'
 
 .PHONY: pulumi-select
 pulumi-select:
-	pulumi stack select $(ENVIRONMENT)
+	cd pulumi && pulumi stack select $(ENVIRONMENT)
 
 .PHONY: pulumi-refresh
 pulumi-refresh:
-	pulumi refresh --yes
+	cd pulumi && pulumi refresh --yes
 
 .PHONY: pulumi-preview
 pulumi-preview:
-	pulumi preview
+	cd pulumi && pulumi preview
 
 .PHONY: pulumi-up
 pulumi-up:
-	pulumi up --yes
+	cd pulumi && pulumi up --yes

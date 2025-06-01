@@ -58,13 +58,11 @@ jobs:
           echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
 
       - name: Configure Pulumi backend
-        working-directory: ./pulumi
         run: |
           # Use AWS S3 backend for Pulumi state
-          make -f ../Makefile pulumi-login
+          make pulumi-login
 
       - name: Select Pulumi stack
-        working-directory: ./pulumi
         run: |
           ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -72,14 +70,13 @@ jobs:
           fi
           echo "Using environment: $ENVIRONMENT"
           # Create the stack if it doesn't exist
-          make -f ../Makefile pulumi-select ENVIRONMENT=$ENVIRONMENT
-          make -f ../Makefile pulumi-refresh
+          make pulumi-select ENVIRONMENT=$ENVIRONMENT
+          make pulumi-refresh
 
       - name: Preview infrastructure changes
-        working-directory: ./pulumi
         run: |
           echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
-          make -f ../Makefile pulumi-preview
+          make pulumi-preview
           pulumi config get sqlite-backup-restore:backupBucketName
           pulumi config get sqlite-backup-restore:awsAccountId
 
@@ -90,7 +87,7 @@ jobs:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           echo "Deploying infrastructure to: ${{ github.event.inputs.environment || 'dev' }}"
-          make -f ../Makefile pulumi-up
+          make pulumi-up
 
           # Save stack outputs to environment for the next steps
           echo "BUCKET_NAME=$(pulumi stack output bucketName)" >> $GITHUB_ENV
