@@ -77,7 +77,7 @@ jobs:
 
       - name: Preview infrastructure changes
         run: |
-          echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
+          echo "Previewing changes for environment: $ENVIRONMENT"
           make pulumi-preview ENVIRONMENT=$ENVIRONMENT
           make pulumi-export ENVIRONMENT=$ENVIRONMENT
 
@@ -86,12 +86,12 @@ jobs:
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
-          echo "Deploying infrastructure to: ${{ github.event.inputs.environment || 'dev' }}"
+          echo "Deploying infrastructure to: $ENVIRONMENT"
           make pulumi-up ENVIRONMENT=$ENVIRONMENT
 
           # Save stack outputs to environment for the next steps
-          echo "BUCKET_NAME=$(pulumi stack output bucketName)" >> $GITHUB_ENV
-          echo "ROLE_ARN=$(pulumi stack output backupRestoreRoleArn)" >> $GITHUB_ENV
+          echo "BUCKET_NAME=$(cd pulumi && pulumi stack output bucketName)" >> $GITHUB_ENV
+          echo "ROLE_ARN=$(cd pulumi && pulumi stack output backupRestoreRoleArn)" >> $GITHUB_ENV
 
       - name: Output resource information
         if: github.event_name != 'pull_request' && success()
