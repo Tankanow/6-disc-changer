@@ -4,12 +4,16 @@
 - `src/database/restore.rs` - Handles SQLite database restoration from S3 backups.
 - `src/database/s3_client.rs` - AWS S3 client implementation for database operations.
 - `src/database/scheduler.rs` - Manages scheduled backup operations.
+- `src/database/mod.rs` - Database module exports and error types for backup/restore operations.
+- `src/database/storage/mod.rs` - Storage trait definition and provider factory for abstracting storage backends.
+- `src/database/storage/local_storage.rs` - Local filesystem implementation of storage for development and fallbacks.
 - `src/config.rs` - Configuration settings for backup/restore functionality.
 - `src/main.rs` - Entry point where database restoration happens on startup.
 - `.github/workflows/aws-infrastructure.yml` - GitHub Actions workflow for AWS infrastructure provisioning.
 - `pulumi/` - Infrastructure as Code for AWS resources using Pulumi YAML.
 - `docs/2025-06-01-01-configure-github-actions-aws-permissions.md` - Documentation for setting up AWS IAM OIDC with GitHub Actions.
 - `docs/2025-06-01-02-fly-io-oidc-setup.md` - Documentation for configuring AWS IAM to trust fly.io's OIDC provider.
+- `docs/2025-06-01-03-local-development-fallbacks.md` - Documentation for local fallback mechanisms when AWS is unavailable.
 - `scripts/setup-github-oidc.sh` - Bash script to automate AWS OIDC provider and IAM role setup for GitHub Actions.
 
 ### Notes
@@ -25,7 +29,7 @@
   - [x] 1.3 Configure IAM roles with least privilege permissions for S3 access
   - [x] 1.4 Implement GitHub Actions workflow to deploy Pulumi infrastructure
   - [x] 1.5 Set up trust relationship between IAM roles and fly.io OpenID Connect
-  - [ ] 1.6 Create local development fallbacks when AWS is unavailable
+  - [x] 1.6 Create local development fallbacks when AWS is unavailable
   - [ ] 1.7 Document AWS infrastructure setup and access patterns
 - [ ] 2.0 Implement SQLite Database Backup System
   - [ ] 2.1 Create S3 client implementation using AWS SDK

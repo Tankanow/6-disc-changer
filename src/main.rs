@@ -10,6 +10,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 mod db;
+mod database;
+mod config;
 
 // Define a struct to hold our application state
 struct AppState {

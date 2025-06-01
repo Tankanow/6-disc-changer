@@ -24,6 +24,9 @@ Guidelines for managing task lists in markdown files to track progress on comple
    - List every file created or modified.
    - Give each file a one‑line description of its purpose.
 
+## Docs
+1. When generating docs in `docs/` AI *MUST* use this file pattern, `[date]-[number]-[description].md` where [date] is in the format `YYYY-MM-DD` and [number] is a sequential number starting from 01 e.g. `2025-06-01-02-fly-io-oidc-setup.md`.
+
 ## AI Instructions
 
 When working with task lists, the AI must:
