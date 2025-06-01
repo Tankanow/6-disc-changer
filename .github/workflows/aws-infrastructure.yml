@@ -79,6 +79,9 @@ jobs:
         run: |
           echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
           make -f ../Makefile pulumi-preview
+          pulumi config get sqlite-backup-restore:backupBucketName
+          pulumi config get sqlite-backup-restore:awsAccountId
+          exit 1
 
       - name: Deploy infrastructure
         if: github.event_name != 'pull_request'
