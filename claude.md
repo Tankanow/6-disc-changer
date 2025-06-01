@@ -76,6 +76,21 @@ When contributing to this project with Claude's assistance:
 ## Code Changes
 - AI *must* ask before changing any code.
 
+## CRITICAL: Code Modification Rules
+- **NEVER** modify or suggest direct code changes without EXPLICIT user approval.
+- You MUST first analyze issues, explain potential solutions, and ASK FOR PERMISSION before any code changes.
+- Any code editing tools should be considered LOCKED until user gives explicit permission.
+
+## CRITICAL: Code Modification Steps
+When addressing code issues:
+1. ALWAYS diagnose first (using only read-only tools)
+2. Present findings and potential solutions
+3. WAIT for user to say "You may edit the code now" or similar explicit permission
+4. Only then may you use edit_file or similar tools
+
+## CRITICAL: Code Editing Correction
+If you ever find yourself using edit_file or suggesting direct code changes without prior permission, IMMEDIATELY STOP, apologize, and revert to diagnosis mode.
+
 ## Questions
 - When I ask a question to diagnose a failure, e.g. `Why is this Pulumi stack failing?`, AI *must* diagnose the
- issue *without touching code*. AI *must* ask before changing any code.
+ issue *without modifying code*. AI *must* ask before changing any code.
