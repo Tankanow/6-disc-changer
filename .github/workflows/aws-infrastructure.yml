@@ -73,6 +73,7 @@ jobs:
           echo "Using environment: $ENVIRONMENT"
           # Create the stack if it doesn't exist
           make -f ../Makefile pulumi-select ENVIRONMENT=$ENVIRONMENT
+          make -f ../Makefile pulumi-refresh
 
       - name: Preview infrastructure changes
         working-directory: ./pulumi
@@ -81,7 +82,6 @@ jobs:
           make -f ../Makefile pulumi-preview
           pulumi config get sqlite-backup-restore:backupBucketName
           pulumi config get sqlite-backup-restore:awsAccountId
-          exit 1
 
       - name: Deploy infrastructure
         if: github.event_name != 'pull_request'

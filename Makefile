@@ -31,6 +31,10 @@ pulumi-login:
 pulumi-select:
 	pulumi stack select $(ENVIRONMENT)
 
+.PHONY: pulumi-refresh
+pulumi-refresh:
+	pulumi refresh --yes
+
 .PHONY: pulumi-preview
 pulumi-preview:
 	pulumi preview
