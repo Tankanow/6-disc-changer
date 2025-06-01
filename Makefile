@@ -37,11 +37,12 @@ pulumi-refresh: pulumi-select
 
 .PHONY: pulumi-preview
 pulumi-preview: pulumi-select
-	cd pulumi && pulumi preview --verbose 5
+	cd pulumi && pulumi preview --debug
+	exit 1
 
 .PHONY: pulumi-export
 pulumi-export: pulumi-select
-	cd pulumi && pulumi stack export --verbose 5
+	cd pulumi && pulumi stack export
 
 .PHONY: pulumi-up
 pulumi-up: pulumi-select
