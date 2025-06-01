@@ -9,8 +9,6 @@ resources:
       url: "https://oidc.fly.io/${flyOrgSlug}"
       clientIdLists:
         - "sts.amazonaws.com"
-      thumbprintLists:
-        - "7e82aecb58c09e2aff05bc8fbc1c46229bfcfb42d5821703f850b7c335cb4685" # fly.io OIDC thumbprint
   # Create an AWS resource (S3 Bucket)
   backupBucket:
     type: aws:s3:BucketV2
