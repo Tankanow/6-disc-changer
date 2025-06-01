@@ -80,7 +80,6 @@ jobs:
           echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
           make pulumi-preview ENVIRONMENT=$ENVIRONMENT
           make pulumi-export ENVIRONMENT=$ENVIRONMENT
-          exit 1
 
       - name: Deploy infrastructure
         if: github.event_name != 'pull_request'
