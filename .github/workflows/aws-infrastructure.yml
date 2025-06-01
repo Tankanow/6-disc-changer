@@ -23,6 +23,11 @@ on:
           - dev
           - prod
 
+env:
+  PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+  PULUMI_CONFIG_PASSPHRASE_FILE: $${ secrets.PULUMI_CONFIG_PASSPHRASE_FILE }
+
+
 jobs:
   deploy-infrastructure:
     name: Deploy AWS Infrastructure
@@ -104,10 +109,6 @@ jobs:
           echo "S3 Bucket: $BUCKET_NAME"
           echo "IAM Role: $ROLE_ARN"
           echo "Region: ${{ secrets.AWS_REGION }}"
-
-          # Validate that the resources exist
-          aws s3api head-bucket --bucket $BUCKET_NAME || echo "Warning: Bucket verification failed"
-          aws iam get-role --role-name $(basename $ROLE_ARN) || echo "Warning: Role verification failed"
 
       # State is now stored in S3, no need to upload as artifact
 
