@@ -4,12 +4,12 @@ description: AWS infrastructure for SQLite database backup and restore system
 resources:
   # OIDC Provider for fly.io
   flyIoOidcProvider:
-    type: aws:iam:OidcProvider
+    type: aws:iam:OpenIdConnectProvider
     properties:
       url: "https://oidc.fly.io/${flyOrgSlug}"
-      clientIdList:
+      clientIdLists:
         - "sts.amazonaws.com"
-      thumbprintList:
+      thumbprintLists:
         - "7e82aecb58c09e2aff05bc8fbc1c46229bfcfb42d5821703f850b7c335cb4685" # fly.io OIDC thumbprint
   # Create an AWS resource (S3 Bucket)
   backupBucket:

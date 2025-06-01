@@ -28,20 +28,19 @@ Our project uses Pulumi to define and deploy AWS infrastructure, including the O
 
 1. Creating an OIDC Identity Provider for fly.io
 2. Setting up an IAM Role with a trust policy that allows specific fly.io applications to assume the role
-3. Att
-aching permissions to the role for accessing S3 buckets
+3. Attaching permissions to the role for accessing S3 buckets
 
 ### Key Components in Pulumi.yaml
 
 ```yaml
 # OIDC Provider for fly.io
 flyIoOidcProvider:
-  type: aws:iam:OidcProvider
+  type: aws:iam:OpenIdConnectProvider
   properties:
     url: "https://oidc.fly.io/${flyOrgSlug}"
-    clientIdList:
+    clientIdLists:
       - "sts.amazonaws.com"
-    thumbprintList:
+    thumbprintLists:
       - "7e82aecb58c09e2aff05bc8fbc1c46229bfcfb42d5821703f850b7c335cb4685"
 
 # IAM Role with OIDC trust relationship
