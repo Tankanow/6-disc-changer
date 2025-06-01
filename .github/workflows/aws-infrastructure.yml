@@ -69,16 +69,12 @@ jobs:
             ENVIRONMENT="dev"
           fi
           echo "Using environment: $ENVIRONMENT"
-          # Create the stack if it doesn't exist
-          make pulumi-select ENVIRONMENT=$ENVIRONMENT
-          make pulumi-refresh
+          make pulumi-refresh ENVIRONMENT=$ENVIRONMENT
 
       - name: Preview infrastructure changes
         run: |
           echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
-          make pulumi-preview
-          pulumi config get sqlite-backup-restore:backupBucketName
-          pulumi config get sqlite-backup-restore:awsAccountId
+          make pulumi-preview ENVIRONMENT=$ENVIRONMENT
 
       - name: Deploy infrastructure
         if: github.event_name != 'pull_request'
@@ -87,7 +83,7 @@ jobs:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           echo "Deploying infrastructure to: ${{ github.event.inputs.environment || 'dev' }}"
-          make pulumi-up
+          make pulumi-up ENVIRONMENT=$ENVIRONMENT
 
           # Save stack outputs to environment for the next steps
           echo "BUCKET_NAME=$(pulumi stack output bucketName)" >> $GITHUB_ENV

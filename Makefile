@@ -32,7 +32,7 @@ pulumi-select:
 	cd pulumi && pulumi stack select $(ENVIRONMENT)
 
 .PHONY: pulumi-refresh
-pulumi-refresh:
+pulumi-refresh: pulumi-select
 	cd pulumi && pulumi refresh --yes
 
 .PHONY: pulumi-preview
@@ -40,5 +40,5 @@ pulumi-preview: pulumi-select
 	cd pulumi && pulumi preview
 
 .PHONY: pulumi-up
-pulumi-up:
+pulumi-up: pulumi-select
 	cd pulumi && pulumi up --yes
