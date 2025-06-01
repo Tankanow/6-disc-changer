@@ -62,13 +62,17 @@ jobs:
           # Use AWS S3 backend for Pulumi state
           make pulumi-login
 
-      - name: Select Pulumi stack
+      - name: Set ENVIRONMENT
         run: |
           ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             ENVIRONMENT="dev"
           fi
           echo "Using environment: $ENVIRONMENT"
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
+
+      - name: Refresh Pulumi stack
+        run: |
           make pulumi-refresh ENVIRONMENT=$ENVIRONMENT
 
       - name: Preview infrastructure changes
