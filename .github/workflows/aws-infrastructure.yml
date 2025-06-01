@@ -1,0 +1,130 @@
+name: AWS Infrastructure Deployment
+
+on:
+  push:
+    branches:
+      - main
+      # - feat/sqlite-backup-restore
+    paths:
+      - 'pulumi/**'
+      - '.github/workflows/aws-infrastructure.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'pulumi/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy (dev/prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+jobs:
+  deploy-infrastructure:
+    name: Deploy AWS Infrastructure
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install Pulumi CLI
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          export PATH=$PATH:$HOME/.pulumi/bin
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+
+      - name: Configure Pulumi backend
+        working-directory: ./pulumi
+        run: |
+          # Use AWS S3 backend for Pulumi state
+          pulumi login s3://pulumi-state-${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Select Pulumi stack
+        working-directory: ./pulumi
+        run: |
+          ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ENVIRONMENT="dev"
+          fi
+          echo "Using environment: $ENVIRONMENT"
+          # Create the stack if it doesn't exist
+          pulumi stack init $ENVIRONMENT --non-interactive || true
+          pulumi stack select $ENVIRONMENT
+
+          # Set necessary config values from secrets
+          pulumi config set aws:region ${{ secrets.AWS_REGION }} --non-interactive
+
+      - name: Preview infrastructure changes
+        working-directory: ./pulumi
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+        run: |
+          echo "Previewing changes for environment: ${{ github.event.inputs.environment || 'dev' }}"
+          pulumi preview --diff
+
+      - name: Deploy infrastructure
+        if: github.event_name != 'pull_request'
+        working-directory: ./pulumi
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          echo "Deploying infrastructure to: ${{ github.event.inputs.environment || 'dev' }}"
+          pulumi up --yes
+
+          # Save stack outputs to environment for the next steps
+          echo "BUCKET_NAME=$(pulumi stack output bucketName)" >> $GITHUB_ENV
+          echo "ROLE_ARN=$(pulumi stack output backupRestoreRoleArn)" >> $GITHUB_ENV
+
+      - name: Output resource information
+        if: github.event_name != 'pull_request' && success()
+        working-directory: ./pulumi
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+        run: |
+          echo "S3 Bucket: $BUCKET_NAME"
+          echo "IAM Role: $ROLE_ARN"
+          echo "Region: ${{ secrets.AWS_REGION }}"
+
+          # Validate that the resources exist
+          aws s3api head-bucket --bucket $BUCKET_NAME || echo "Warning: Bucket verification failed"
+          aws iam get-role --role-name $(basename $ROLE_ARN) || echo "Warning: Role verification failed"
+
+      # State is now stored in S3, no need to upload as artifact
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          echo "## Pulumi Infrastructure Deployment" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment completed successfully" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              echo "**Resources:**" >> $GITHUB_STEP_SUMMARY
+              echo "- S3 Bucket: \`$BUCKET_NAME\`" >> $GITHUB_STEP_SUMMARY
+              echo "- IAM Role: \`$ROLE_ARN\`" >> $GITHUB_STEP_SUMMARY
+              echo "- Region: \`${{ secrets.AWS_REGION }}\`" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ Deployment failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "Environment: ${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
+          echo "Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY

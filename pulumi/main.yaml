@@ -1,0 +1,107 @@
+name: pulumi-yaml
+description: A minimal AWS Pulumi YAML program
+runtime: yaml
+resources:
+  # Create an AWS resource (S3 Bucket)
+  backupBucket:
+    type: aws:s3:BucketV2
+    properties:
+      bucket: ${backupBucketName}
+      tags:
+        Application: "6-disc-changer"
+        Environment: ${pulumi.stack}
+  backupBucketOwnershipControls:
+    type: aws:s3:BucketOwnershipControls
+    name: example
+    properties:
+      bucket: ${backupBucket.id}
+      rule:
+        objectOwnership: BucketOwnerPreferred
+  backupBucketAclV2:
+    type: aws:s3:BucketAclV2
+    name: example
+    properties:
+      bucket: ${backupBucket.id}
+      acl: private
+    options:
+      dependsOn:
+        - ${backupBucketOwnershipControls}
+  backupBucketEncryption:
+    type: aws:s3:BucketServerSideEncryptionConfigurationV2
+    properties:
+      bucket: ${backupBucket.id}
+      rules:
+        - applyServerSideEncryptionByDefault:
+            sseAlgorithm: AES256
+
+  # IAM Role for the application to use when accessing S3
+  backupRestoreRole:
+    type: aws:iam:Role
+    properties:
+      name: six-disc-changer-backup-restore-${pulumi.stack}
+      description: "Role for 6-disc-changer to perform database backup and restore operations"
+      # Note: This placeholder trust policy will be replaced in task 1.5 with proper fly.io OIDC trust relationship
+      assumeRolePolicy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "${awsAccountId}"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+      tags:
+        Application: "6-disc-changer"
+        Environment: ${pulumi.stack}
+
+  # IAM Policy with least privilege permissions for S3 operations
+  backupRestorePolicy:
+    type: aws:iam:Policy
+    properties:
+      name: six-disc-changer-s3-access-${pulumi.stack}
+      description: "Policy granting least privilege access to S3 for database backup and restore"
+      policy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucket"
+              ],
+              "Resource": "${backupBucket.arn}"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+              ],
+              "Resource": "${backupBucket.arn}/*"
+            }
+          ]
+        }
+
+  # Attach the policy to the role
+  backupRestorePolicyAttachment:
+    type: aws:iam:RolePolicyAttachment
+    properties:
+      role: ${backupRestoreRole.name}
+      policyArn: ${backupRestorePolicy.arn}
+
+outputs:
+  # Export the name of the bucket
+  bucketName: ${backupBucket.id}
+  # Export the role ARN for use in application configuration
+  backupRestoreRoleArn: ${backupRestoreRole.arn}
+
+
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: aws-yaml

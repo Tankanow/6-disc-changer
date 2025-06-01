@@ -1,0 +1,4 @@
+name: sqlite-backup-restore
+runtime: yaml
+description: AWS infrastructure for SQLite database backup and restore system
+main: .

@@ -1,0 +1,5 @@
+config:
+  aws:region: "us-east-1"
+  sqlite-backup-restore:backupBucketName: "6-disc-changer-dev-sqlite-backups"
+  sqlite-backup-restore:awsAccountId: "214549340182"
+  sqlite-backup-restore:appName: my-fly-app-prod
