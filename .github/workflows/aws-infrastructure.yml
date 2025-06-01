@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      # - feat/sqlite-backup-restore
+      - FEAT/sqlite-backup-restore
     paths:
       - 'pulumi/**'
       - '.github/workflows/aws-infrastructure.yml'
