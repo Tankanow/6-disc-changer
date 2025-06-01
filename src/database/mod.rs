@@ -3,14 +3,15 @@
 // Re-export storage module for public use
 pub mod storage;
 
+// Database modules
+pub mod backup;
 // These will be implemented in future tasks
-// mod backup;
 // mod restore;
 // mod scheduler;
 // mod s3_client;
 
 // Public re-exports
-// pub use backup::*;
+// pub use backup::*;  // Will be uncommented when used by other modules
 // pub use restore::*;
 // pub use scheduler::*;
 
