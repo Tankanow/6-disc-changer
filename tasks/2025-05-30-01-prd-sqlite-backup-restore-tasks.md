@@ -38,7 +38,7 @@
   - [x] 2.1 Create S3 client implementation using AWS SDK
   - [x] 2.2 Implement SQLite backup operations with proper locking mechanisms
   - [x] 2.3 Design timestamp-based naming convention for backup files
-  - [ ] 2.4 Ensure backup operations run in background threads
+  - [x] 2.4 Ensure backup operations run in background threads
   - [ ] 2.5 Add configuration options for backup paths and S3 bucket information
   - [ ] 2.6 Implement backup status tracking and result verification
 - [ ] 3.0 Implement SQLite Database Restore System

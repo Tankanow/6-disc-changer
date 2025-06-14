@@ -12,7 +12,9 @@ pub mod backup_naming;
 // mod s3_client;
 
 // Public re-exports
-// pub use backup::*;  // Will be uncommented when used by other modules
+pub use backup::{
+    BackupJob, BackupJobStatus, BackupManager, BackupOptions, BackupResult, BackupStatus,
+};
 // pub use restore::*;
 // pub use scheduler::*;
 
@@ -27,21 +29,24 @@ pub const DATABASE_DIR: &str = "database";
 pub enum DatabaseError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Storage error: {0}")]
     Storage(String),
-    
+
     #[error("SQLite error: {0}")]
     Sqlite(String),
-    
+
     #[error("Configuration error: {0}")]
     Config(String),
-    
+
     #[error("Backup not found")]
     BackupNotFound,
-    
+
     #[error("AWS error: {0}")]
     Aws(String),
+
+    #[error("Backup error: {0}")]
+    Backup(String),
 }
 
 /// Result type for database operations
