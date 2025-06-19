@@ -634,14 +634,8 @@ mod tests {
 
         // Create config with local storage
         let config = BackupConfig {
-            use_aws: false,
-            s3_bucket_name: String::new(),
-            aws_region: String::from("us-west-2"),
-            aws_role_arn: None,
             local_backup_dir: temp_dir.path().to_path_buf(),
-            local_backup_max_count: 5,
-            environment: String::from("dev"),
-            server_id: Option::None,
+            ..Default::default()
         };
 
         // Create local storage provider
@@ -714,14 +708,9 @@ mod tests {
 
         // Create config with local storage
         let config = BackupConfig {
-            use_aws: false,
-            s3_bucket_name: String::new(),
-            aws_region: String::from("us-west-2"),
-            aws_role_arn: None,
             local_backup_dir: backup_dir.path().to_path_buf(),
-            local_backup_max_count: 5,
             environment: String::from("test"),
-            server_id: None,
+            ..Default::default()
         };
 
         // Create local storage provider
@@ -796,14 +785,9 @@ mod tests {
 
         // Create config with local storage
         let config = BackupConfig {
-            use_aws: false,
-            s3_bucket_name: String::new(),
-            aws_region: String::from("us-west-2"),
-            aws_role_arn: None,
             local_backup_dir: backup_dir.path().to_path_buf(),
-            local_backup_max_count: 5,
             environment: String::from("test"),
-            server_id: None,
+            ..Default::default()
         };
 
         // Create local storage provider
@@ -867,14 +851,9 @@ mod tests {
 
         // Create config with local storage
         let config = BackupConfig {
-            use_aws: false,
-            s3_bucket_name: String::new(),
-            aws_region: String::from("us-west-2"),
-            aws_role_arn: None,
             local_backup_dir: backup_dir.path().to_path_buf(),
-            local_backup_max_count: 5,
             environment: String::from("test"),
-            server_id: None,
+            ..Default::default()
         };
 
         // Create local storage provider

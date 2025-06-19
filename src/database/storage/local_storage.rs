@@ -385,14 +385,9 @@ mod tests {
 
         // Create a test configuration
         let config = BackupConfig {
-            use_aws: false,
-            s3_bucket_name: String::new(),
-            aws_region: String::from("us-west-2"),
-            aws_role_arn: None,
             local_backup_dir: backup_dir.clone(),
             local_backup_max_count: 5,
-            environment: String::from("dev"),
-            server_id: Option::None,
+            ..Default::default()
         };
 
         let provider = LocalStorageProvider::new(&config);
@@ -433,14 +428,9 @@ mod tests {
 
         // Create a test configuration
         let config = BackupConfig {
-            use_aws: false,
-            s3_bucket_name: String::new(),
-            aws_region: String::from("us-west-2"),
-            aws_role_arn: None,
             local_backup_dir: backup_dir.clone(),
             local_backup_max_count: 2,
-            environment: String::from("dev"),
-            server_id: Option::None,
+            ..Default::default()
         };
 
         let provider = LocalStorageProvider::new(&config);
