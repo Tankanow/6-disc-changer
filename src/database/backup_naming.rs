@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 use rand::distributions::Alphanumeric;
 use rand::{Rng, thread_rng};
 use std::path::Path;
+use tracing::debug;
 
 /// Service for generating backup identifiers
 #[derive(Debug, Clone)]
@@ -88,7 +89,7 @@ impl BackupId {
     pub fn parse(backup_id: &str) -> Option<Self> {
         let parts: Vec<&str> = backup_id.split('_').collect();
 
-        println!("Parsing {:?}", parts);
+        debug!("Parsing backup ID: {:?}", parts);
         if parts.len() < 5 || parts[0] != "backup" {
             return None;
         }
@@ -103,15 +104,15 @@ impl BackupId {
         let seconds = &time_str[4..6];
 
         // Reformat for proper ISO parsing
-        println!("Reformatting date and time");
+        debug!("Reformatting date and time");
         let iso_datetime = format!("{}T{}:{}:{}+00:00", date_str, hours, minutes, seconds);
-        println!("Iso datetime: {}", iso_datetime);
+        debug!("ISO datetime: {}", iso_datetime);
         let timestamp = match DateTime::parse_from_rfc3339(&iso_datetime) {
             Ok(dt) => dt.with_timezone(&Utc),
             Err(_) => return None,
         };
 
-        println!("Timestamp is {}", timestamp);
+        debug!("Parsed timestamp: {}", timestamp);
         // Parse environment and optional server ID
         let environment = parts[3].to_string();
 

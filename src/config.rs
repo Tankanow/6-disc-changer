@@ -1,5 +1,6 @@
 use std::env;
 use std::path::PathBuf;
+use tracing::error;
 
 /// Configuration for database backup and restore functionality
 #[derive(Debug, Clone)]
@@ -44,11 +45,9 @@ impl BackupConfig {
             .map(|v| v.to_lowercase() == "true")
             .unwrap_or(false);
 
-        let s3_bucket_name = env::var("BACKUP_S3_BUCKET")
-            .unwrap_or_else(|_| String::new());
+        let s3_bucket_name = env::var("BACKUP_S3_BUCKET").unwrap_or_else(|_| String::new());
 
-        let aws_region = env::var("AWS_REGION")
-            .unwrap_or_else(|_| String::from("us-west-2"));
+        let aws_region = env::var("AWS_REGION").unwrap_or_else(|_| String::from("us-west-2"));
 
         let aws_role_arn = env::var("AWS_ROLE_ARN").ok();
 
@@ -60,10 +59,9 @@ impl BackupConfig {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(10);
-            
-        let environment = env::var("BACKUP_ENVIRONMENT")
-            .unwrap_or_else(|_| String::from("dev"));
-            
+
+        let environment = env::var("BACKUP_ENVIRONMENT").unwrap_or_else(|_| String::from("dev"));
+
         let server_id = env::var("BACKUP_SERVER_ID").ok();
 
         Self {
@@ -82,7 +80,7 @@ impl BackupConfig {
     pub async fn should_use_aws(&self) -> bool {
         use aws_sdk_s3::Client as S3Client;
         use aws_types::region::Region;
-        
+
         // If AWS is disabled in config, don't use it
         if !self.use_aws {
             return false;
@@ -105,18 +103,24 @@ impl BackupConfig {
             let client = S3Client::new(&aws_config);
 
             // Try to check if the bucket exists
-            client.head_bucket()
+            client
+                .head_bucket()
                 .bucket(&self.s3_bucket_name)
                 .send()
                 .await
-        }.await {
+        }
+        .await
+        {
             Ok(_) => {
                 // Bucket exists and is accessible
                 true
             }
             Err(err) => {
                 // Log the error and return false
-                eprintln!("AWS S3 connectivity check failed: {}, falling back to local storage", err);
+                error!(
+                    "AWS S3 connectivity check failed: {}, falling back to local storage",
+                    err
+                );
                 false
             }
         }

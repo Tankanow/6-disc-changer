@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use tempfile::tempdir;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 use crate::database::backup_naming::BackupNamingService;
 
@@ -164,6 +165,9 @@ impl BackupManager {
             self.naming_service.generate_backup_id_with_time(Utc::now())
         );
 
+        info!("Starting backup job: {}", job_id);
+        debug!("Backup options: {:?}", options);
+
         // Create initial job entry
         let job = BackupJob {
             job_id: job_id.clone(),
@@ -206,34 +210,42 @@ impl BackupManager {
             if let Some(job) = jobs.get_mut(&job_id_clone) {
                 match result {
                     Ok(backup_result) => {
+                        info!("Backup job {} completed successfully", job_id_clone);
                         job.status = BackupJobStatus::Completed {
                             result: backup_result,
                         };
                     }
                     Err(e) => {
+                        error!("Backup job {} failed: {}", job_id_clone, e);
                         job.status = BackupJobStatus::Failed {
                             error: e.to_string(),
                             failed_at: Utc::now(),
                         };
                     }
                 }
+            } else {
+                warn!("Could not find job {} to update status", job_id_clone);
             }
 
             // Remove job handle
             let mut handles = job_handles.lock().await;
             handles.remove(&job_id_clone);
+            debug!("Removed job handle for {}", job_id_clone);
         });
 
         // Store the job handle
+        // Store handle
         {
             let mut handles = self.job_handles.lock().await;
             handles.insert(job_id.clone(), handle);
         }
 
+        debug!("Backup job {} spawned in background", job_id);
         Ok(job_id)
     }
 
     /// Perform the backup operation in the background
+    /// Perform the actual backup operation
     async fn perform_background_backup(
         job_id: String,
         db_pool: Pool<Sqlite>,
@@ -243,14 +255,17 @@ impl BackupManager {
         active_jobs: Arc<RwLock<HashMap<String, BackupJob>>>,
         options: BackupOptions,
     ) -> Result<BackupResult> {
-        // Acquire mutex to ensure only one backup runs at a time
-        let _lock = backup_mutex.lock().await;
+        debug!("Waiting to acquire backup mutex for job {}", job_id);
+        // Hold the mutex during the entire backup operation
+        let _guard = backup_mutex.lock().await;
+        debug!("Acquired backup mutex for job {}", job_id);
 
         // Check if job was cancelled
         {
             let jobs = active_jobs.read().await;
             if let Some(job) = jobs.get(&job_id) {
                 if matches!(job.status, BackupJobStatus::Cancelled { .. }) {
+                    warn!("Backup job {} was cancelled before starting", job_id);
                     return Ok(BackupResult {
                         backup_id: String::new(),
                         timestamp: Utc::now(),
@@ -268,10 +283,12 @@ impl BackupManager {
 
         // Generate backup ID using the naming service
         let backup_id = naming_service.generate_backup_id_with_time(timestamp);
+        info!("Starting backup operation with ID: {}", backup_id);
 
         // Create temporary directory for backup
         let temp_dir = tempdir().map_err(|e| DatabaseError::Io(e))?;
         let backup_path = temp_dir.path().join("backup.db");
+        debug!("Created temporary backup path: {:?}", backup_path);
 
         // Acquire a connection from the pool
         let conn = db_pool.acquire().await?;
@@ -286,12 +303,15 @@ impl BackupManager {
                 let size_bytes = std::fs::metadata(&backup_path)
                     .map(|m| m.len())
                     .unwrap_or(0);
+                debug!("Backup file size: {} bytes", size_bytes);
 
                 // Store the backup with the storage provider
+                info!("Uploading backup {} to storage provider", backup_id);
                 if let Err(e) = storage
                     .store_backup(&backup_path, &backup_id, &naming_service.environment_dir())
                     .await
                 {
+                    error!("Failed to store backup {}: {}", backup_id, e);
                     return Ok(BackupResult {
                         backup_id,
                         timestamp,
@@ -301,16 +321,23 @@ impl BackupManager {
                     });
                 }
 
+                let duration = start_time.elapsed();
+                info!(
+                    "Backup {} completed successfully in {:?}, size: {} bytes",
+                    backup_id, duration, size_bytes
+                );
+
                 // Return successful result
                 Ok(BackupResult {
                     backup_id,
                     timestamp,
-                    duration: start_time.elapsed(),
+                    duration,
                     size_bytes,
                     status: BackupStatus::Completed,
                 })
             }
             Err(e) => {
+                error!("Backup {} failed: {}", backup_id, e);
                 // Return failed result
                 Ok(BackupResult {
                     backup_id,
@@ -327,18 +354,23 @@ impl BackupManager {
     async fn perform_backup_internal(
         conn: sqlx::pool::PoolConnection<Sqlite>,
         backup_path: &Path,
-        _backup_id: &str, // Not used directly but keeping for consistency
+        backup_id: &str,
         options: &BackupOptions,
     ) -> Result<()> {
+        debug!("Starting internal backup process for {}", backup_id);
+
         // Create backup operation
         let backup_op = BackupOperation { source_conn: conn };
 
         // Perform the backup using vacuum into
+        debug!("Executing VACUUM INTO for backup {}", backup_id);
         Self::execute_backup_static(backup_op, backup_path).await?;
 
         // Verify the backup if requested
         if options.verify {
+            info!("Verifying backup {} integrity", backup_id);
             Self::verify_backup_static(backup_path).await?;
+            debug!("Backup {} verification completed successfully", backup_id);
         }
 
         Ok(())
@@ -358,6 +390,7 @@ impl BackupManager {
         // This is an atomic operation that copies the entire database
         // Note: VACUUM INTO cannot run inside a transaction
         let vacuum_sql = format!("VACUUM INTO '{}'", dest_path.replace("'", "''"));
+        debug!("Executing SQL: VACUUM INTO '{}'", dest_path);
 
         backup_op
             .source_conn
@@ -365,11 +398,14 @@ impl BackupManager {
             .await
             .map_err(|e| DatabaseError::Sqlite(format!("Failed to execute VACUUM INTO: {}", e)))?;
 
+        debug!("VACUUM INTO completed successfully");
         Ok(())
     }
 
     /// Verify a backup is valid (static version)
     async fn verify_backup_static(backup_path: &Path) -> Result<()> {
+        debug!("Starting backup verification for {:?}", backup_path);
+
         // Connect to the backup database in read-only mode
         let db_url = format!("sqlite:{}?mode=ro", backup_path.display());
         let mut conn = SqliteConnection::connect(&db_url).await.map_err(|e| {
@@ -382,17 +418,28 @@ impl BackupManager {
             .await
             .map_err(|e| DatabaseError::Sqlite(format!("Backup verification failed: {}", e)))?;
 
+        debug!("Backup verification successful");
         Ok(())
     }
 
     /// Get the status of a backup job
     pub async fn get_backup_status(&self, job_id: &str) -> Option<BackupJob> {
         let jobs = self.active_jobs.read().await;
-        jobs.get(job_id).cloned()
+        let job = jobs.get(job_id).cloned();
+
+        if let Some(ref j) = job {
+            debug!("Job {} status: {:?}", job_id, j.status);
+        } else {
+            debug!("Job {} not found in active jobs", job_id);
+        }
+
+        job
     }
 
     /// Wait for a backup job to complete
     pub async fn wait_for_backup(&self, job_id: &str) -> Result<BackupResult> {
+        info!("Waiting for backup job {} to complete", job_id);
+
         // Get the job handle
         let handle = {
             let mut handles = self.job_handles.lock().await;
@@ -401,33 +448,52 @@ impl BackupManager {
 
         // Wait for the job to complete if we have a handle
         if let Some(handle) = handle {
+            debug!("Found job handle for {}, waiting for completion", job_id);
             let _ = handle.await;
+        } else {
+            debug!(
+                "No job handle found for {}, checking status directly",
+                job_id
+            );
         }
 
         // Get the final job status
         let jobs = self.active_jobs.read().await;
         if let Some(job) = jobs.get(job_id) {
             match &job.status {
-                BackupJobStatus::Completed { result } => Ok(result.clone()),
-                BackupJobStatus::Failed { error, .. } => Err(DatabaseError::Backup(error.clone())),
-                BackupJobStatus::Cancelled { .. } => Ok(BackupResult {
-                    backup_id: String::new(),
-                    timestamp: Utc::now(),
-                    duration: Duration::from_secs(0),
-                    size_bytes: 0,
-                    status: BackupStatus::Cancelled,
-                }),
+                BackupJobStatus::Completed { result } => {
+                    info!("Backup job {} completed successfully", job_id);
+                    Ok(result.clone())
+                }
+                BackupJobStatus::Failed { error, .. } => {
+                    error!("Backup job {} failed: {}", job_id, error);
+                    Err(DatabaseError::Backup(error.clone()))
+                }
+                BackupJobStatus::Cancelled { .. } => {
+                    warn!("Backup job {} was cancelled", job_id);
+                    Ok(BackupResult {
+                        backup_id: String::new(),
+                        timestamp: Utc::now(),
+                        duration: Duration::from_secs(0),
+                        size_bytes: 0,
+                        status: BackupStatus::Cancelled,
+                    })
+                }
                 BackupJobStatus::Running { .. } => {
+                    warn!("Backup job {} still running after wait", job_id);
                     Err(DatabaseError::Backup("Job still running".to_string()))
                 }
             }
         } else {
+            error!("Backup job {} not found after wait", job_id);
             Err(DatabaseError::Backup("Job not found".to_string()))
         }
     }
 
     /// Cancel a running backup job
     pub async fn cancel_backup(&self, job_id: &str) -> Result<()> {
+        info!("Attempting to cancel backup job {}", job_id);
+
         // Update job status to cancelled
         let mut jobs = self.active_jobs.write().await;
         if let Some(job) = jobs.get_mut(job_id) {
@@ -435,7 +501,12 @@ impl BackupManager {
                 job.status = BackupJobStatus::Cancelled {
                     cancelled_at: Utc::now(),
                 };
+                info!("Backup job {} marked as cancelled", job_id);
+            } else {
+                debug!("Backup job {} is not running, cannot cancel", job_id);
             }
+        } else {
+            warn!("Backup job {} not found, cannot cancel", job_id);
         }
 
         // Note: The actual cancellation will be checked by the background task
@@ -447,15 +518,20 @@ impl BackupManager {
     /// Get all active backup jobs
     pub async fn get_active_backups(&self) -> Vec<BackupJob> {
         let jobs = self.active_jobs.read().await;
-        jobs.values().cloned().collect()
+        let active_jobs: Vec<BackupJob> = jobs.values().cloned().collect();
+        debug!("Found {} active backup jobs", active_jobs.len());
+        active_jobs
     }
 
     /// Clean up completed jobs older than the specified duration
     pub async fn cleanup_completed_jobs(&self, older_than: Duration) {
         let cutoff_time = Utc::now() - chrono::Duration::from_std(older_than).unwrap();
+        debug!("Cleaning up backup jobs older than {:?}", older_than);
 
         let mut jobs = self.active_jobs.write().await;
-        jobs.retain(|_, job| {
+        let initial_count = jobs.len();
+
+        jobs.retain(|job_id, job| {
             match &job.status {
                 BackupJobStatus::Completed { result } => result.timestamp > cutoff_time,
                 BackupJobStatus::Failed { failed_at, .. } => *failed_at > cutoff_time,

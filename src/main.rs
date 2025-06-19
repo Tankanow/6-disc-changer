@@ -8,10 +8,12 @@ use dotenv::dotenv;
 use minijinja::{Environment, path_loader};
 use serde::Deserialize;
 use std::sync::Arc;
+use tracing::info;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod db;
-mod database;
 mod config;
+mod database;
+mod db;
 
 // Define a struct to hold our application state
 struct AppState {
@@ -92,13 +94,21 @@ async fn main() {
     // Load .env file
     dotenv().ok();
 
+    // Initialize tracing subscriber for structured logging
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
     // Set up the template environment
     let mut env = Environment::new();
     env.set_loader(path_loader("templates"));
 
     // Initialize the database
     let db_pool = db::init_db().await.expect("Failed to initialize database");
-    println!("Database initialized successfully");
+    info!("Database initialized successfully");
 
     // Create the application state
     let state = Arc::new(AppState {
@@ -115,7 +125,7 @@ async fn main() {
         .route("/users/list", get(list_users_handler))
         .with_state(state);
 
-    println!("Server starting on http://0.0.0.0:8080");
+    info!("Server starting on http://0.0.0.0:8080");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

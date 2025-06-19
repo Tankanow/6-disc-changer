@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs as tokio_fs;
+use tracing::{debug, error, info, warn};
 
 use super::StorageProvider;
 
@@ -59,75 +60,127 @@ impl StorageProvider for LocalStorageProvider {
         // Ensure the environment backup directory exists
         let env_dir = self.backup_dir.join(environment);
         if !env_dir.exists() {
-            tokio_fs::create_dir_all(&env_dir)
-                .await
-                .map_err(|e| DatabaseError::Io(e))?;
+            debug!("Creating backup directory: {:?}", env_dir);
+            tokio_fs::create_dir_all(&env_dir).await.map_err(|e| {
+                error!("Failed to create backup directory {:?}: {}", env_dir, e);
+                DatabaseError::Io(e)
+            })?;
         }
 
         let dest_path = self.get_backup_path(backup_id, environment);
+        info!(
+            "Storing backup {} to local storage: {:?}",
+            backup_id, dest_path
+        );
 
         // Copy the backup file to the backup directory
-        tokio_fs::copy(backup_path, &dest_path)
-            .await
-            .map_err(|e| DatabaseError::Io(e))?;
+        tokio_fs::copy(backup_path, &dest_path).await.map_err(|e| {
+            error!(
+                "Failed to copy backup from {:?} to {:?}: {}",
+                backup_path, dest_path, e
+            );
+            DatabaseError::Io(e)
+        })?;
 
+        debug!(
+            "Successfully stored backup {} ({} bytes)",
+            backup_id,
+            std::fs::metadata(&dest_path).map(|m| m.len()).unwrap_or(0)
+        );
         Ok(())
     }
 
     async fn retrieve_backup(&self, backup_id: &str, destination_path: &Path) -> Result<()> {
         // Try to parse the environment from the backup ID
         let environment = crate::database::backup_naming::get_environment_from_backup_id(backup_id)
-            .unwrap_or_else(|| String::from("dev")); // Default to dev if parsing fails
+            .unwrap_or_else(|| {
+                debug!(
+                    "Could not parse environment from backup ID {}, defaulting to 'dev'",
+                    backup_id
+                );
+                String::from("dev")
+            });
 
         let source_path = self.get_backup_path(backup_id, &environment);
+        info!(
+            "Retrieving backup {} from local storage: {:?}",
+            backup_id, source_path
+        );
 
         if !source_path.exists() {
+            warn!("Backup {} not found at {:?}", backup_id, source_path);
             return Err(DatabaseError::BackupNotFound);
         }
 
         // Create the parent directory if it doesn't exist
         if let Some(parent) = destination_path.parent() {
             if !parent.exists() {
-                tokio_fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| DatabaseError::Io(e))?;
+                debug!("Creating destination directory: {:?}", parent);
+                tokio_fs::create_dir_all(parent).await.map_err(|e| {
+                    error!("Failed to create destination directory {:?}: {}", parent, e);
+                    DatabaseError::Io(e)
+                })?;
             }
         }
 
         // Copy the backup file to the destination
         tokio_fs::copy(&source_path, destination_path)
             .await
-            .map_err(|e| DatabaseError::Io(e))?;
+            .map_err(|e| {
+                error!(
+                    "Failed to copy backup from {:?} to {:?}: {}",
+                    source_path, destination_path, e
+                );
+                DatabaseError::Io(e)
+            })?;
 
+        debug!(
+            "Successfully retrieved backup {} ({} bytes)",
+            backup_id,
+            std::fs::metadata(&source_path)
+                .map(|m| m.len())
+                .unwrap_or(0)
+        );
         Ok(())
     }
 
     async fn list_backups(&self) -> Result<Vec<String>> {
+        debug!("Listing all backups from {:?}", self.backup_dir);
+
         if !self.backup_dir.exists() {
+            debug!("Backup directory does not exist, returning empty list");
             return Ok(Vec::new());
         }
 
         let mut all_backups = Vec::new();
 
         // Read all environment directories
-        let mut dir_entries = tokio_fs::read_dir(&self.backup_dir)
-            .await
-            .map_err(|e| DatabaseError::Io(e))?;
+        let mut dir_entries = tokio_fs::read_dir(&self.backup_dir).await.map_err(|e| {
+            error!(
+                "Failed to read backup directory {:?}: {}",
+                self.backup_dir, e
+            );
+            DatabaseError::Io(e)
+        })?;
 
         // Iterate through environment directories
-        while let Some(env_entry) = dir_entries
-            .next_entry()
-            .await
-            .map_err(|e| DatabaseError::Io(e))?
-        {
+        while let Some(env_entry) = dir_entries.next_entry().await.map_err(|e| {
+            error!("Failed to read directory entry: {}", e);
+            DatabaseError::Io(e)
+        })? {
             let env_path = env_entry.path();
 
             if env_path.is_dir() {
                 // List backups in this environment
-                let env_backups = self
-                    .list_environment_backups(env_path.file_name().unwrap().to_str().unwrap())
-                    .await?;
+                let env_name = env_path.file_name().unwrap().to_str().unwrap();
+                debug!("Listing backups for environment: {}", env_name);
+                let env_backups = self.list_environment_backups(env_name).await?;
 
+                debug!(
+                    "Found {} backups in environment {}",
+                    env_backups.len(),
+                    env_name
+                );
                 all_backups.extend(env_backups);
             }
         }
@@ -135,6 +188,7 @@ impl StorageProvider for LocalStorageProvider {
         // Sort all backups by ID (which is timestamp-based) in descending order
         all_backups.sort_by(|a, b| b.cmp(a));
 
+        info!("Found {} total backups", all_backups.len());
         Ok(all_backups)
     }
 
@@ -145,22 +199,27 @@ impl StorageProvider for LocalStorageProvider {
 
     async fn list_environment_backups(&self, environment: &str) -> Result<Vec<String>> {
         let env_dir = self.backup_dir.join(environment);
+        debug!(
+            "Listing backups for environment {} in {:?}",
+            environment, env_dir
+        );
 
         if !env_dir.exists() {
+            debug!("Environment directory does not exist: {:?}", env_dir);
             return Ok(Vec::new());
         }
 
-        let mut entries = tokio_fs::read_dir(&env_dir)
-            .await
-            .map_err(|e| DatabaseError::Io(e))?;
+        let mut entries = tokio_fs::read_dir(&env_dir).await.map_err(|e| {
+            error!("Failed to read environment directory {:?}: {}", env_dir, e);
+            DatabaseError::Io(e)
+        })?;
 
         let mut backup_ids = Vec::new();
 
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| DatabaseError::Io(e))?
-        {
+        while let Some(entry) = entries.next_entry().await.map_err(|e| {
+            error!("Failed to read directory entry: {}", e);
+            DatabaseError::Io(e)
+        })? {
             let path = entry.path();
 
             if path.is_file() {
@@ -183,6 +242,11 @@ impl StorageProvider for LocalStorageProvider {
         // Sort backups by ID (which is timestamp-based) in descending order
         backup_ids.sort_by(|a, b| b.cmp(a));
 
+        debug!(
+            "Found {} backups in environment {}",
+            backup_ids.len(),
+            environment
+        );
         Ok(backup_ids)
     }
 
@@ -194,14 +258,28 @@ impl StorageProvider for LocalStorageProvider {
     async fn delete_backup(&self, backup_id: &str) -> Result<()> {
         // Try to parse the environment from the backup ID
         let environment = crate::database::backup_naming::get_environment_from_backup_id(backup_id)
-            .unwrap_or_else(|| String::from("dev")); // Default to dev if parsing fails
+            .unwrap_or_else(|| {
+                debug!(
+                    "Could not parse environment from backup ID {}, defaulting to 'dev'",
+                    backup_id
+                );
+                String::from("dev")
+            });
 
         let backup_path = self.get_backup_path(backup_id, &environment);
 
         if backup_path.exists() {
-            tokio_fs::remove_file(backup_path)
-                .await
-                .map_err(|e| DatabaseError::Io(e))?;
+            info!("Deleting backup {} at {:?}", backup_id, backup_path);
+            tokio_fs::remove_file(&backup_path).await.map_err(|e| {
+                error!("Failed to delete backup file {:?}: {}", backup_path, e);
+                DatabaseError::Io(e)
+            })?;
+            debug!("Successfully deleted backup {}", backup_id);
+        } else {
+            warn!(
+                "Backup {} not found for deletion at {:?}",
+                backup_id, backup_path
+            );
         }
 
         Ok(())
@@ -217,13 +295,28 @@ impl StorageProvider for LocalStorageProvider {
     }
 
     async fn cleanup_old_backups(&self, keep_count: usize) -> Result<()> {
+        info!(
+            "Starting cleanup of old backups, keeping {} most recent",
+            keep_count
+        );
         let backups = self.list_backups().await?;
 
         // If we have more backups than the limit, delete the oldest ones
         if backups.len() > keep_count {
+            let to_delete = backups.len() - keep_count;
+            info!(
+                "Found {} backups, deleting {} oldest",
+                backups.len(),
+                to_delete
+            );
+
             for backup_id in backups.iter().skip(keep_count) {
                 self.delete_backup(backup_id).await?;
             }
+
+            info!("Cleanup completed, deleted {} backups", to_delete);
+        } else {
+            info!("No cleanup needed, only {} backups exist", backups.len());
         }
 
         Ok(())
@@ -234,13 +327,36 @@ impl StorageProvider for LocalStorageProvider {
         environment: &str,
         keep_count: usize,
     ) -> Result<()> {
+        info!(
+            "Starting cleanup of {} environment backups, keeping {} most recent",
+            environment, keep_count
+        );
         let backups = self.list_environment_backups(environment).await?;
 
         // If we have more backups than the limit, delete the oldest ones
         if backups.len() > keep_count {
+            let to_delete = backups.len() - keep_count;
+            info!(
+                "Found {} backups in {}, deleting {} oldest",
+                backups.len(),
+                environment,
+                to_delete
+            );
+
             for backup_id in backups.iter().skip(keep_count) {
                 self.delete_backup(backup_id).await?;
             }
+
+            info!(
+                "Cleanup completed for {}, deleted {} backups",
+                environment, to_delete
+            );
+        } else {
+            info!(
+                "No cleanup needed for {}, only {} backups exist",
+                environment,
+                backups.len()
+            );
         }
 
         Ok(())
