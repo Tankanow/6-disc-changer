@@ -17,15 +17,17 @@ mod db;
 
 use config::Config;
 use database::{
-    BackupManager, RestorationChecker, create_shared_restoration_status, create_shared_status,
-    storage::create_storage_provider,
+    BackupManager, BackupScheduler, RestorationChecker, backup::BackupOptions,
+    create_shared_restoration_status, create_shared_status, storage::create_storage_provider,
 };
+use tokio::time::Duration;
 
 // Define a struct to hold our application state
 struct AppState {
     templates: Environment<'static>,
     db_pool: db::DbPool,
     backup_manager: Option<Arc<BackupManager>>,
+    backup_scheduler: Option<Arc<BackupScheduler>>,
 }
 
 // Handler for the index route
@@ -170,9 +172,9 @@ async fn main() {
     );
 
     // Initialize backup infrastructure
+    let backup_status = create_shared_status();
     let backup_manager = match create_storage_provider(&config.backup).await {
         Ok(storage) => {
-            let backup_status = create_shared_status();
             let manager = BackupManager::new(
                 db_pool.clone(),
                 storage.into(),
@@ -189,11 +191,37 @@ async fn main() {
         }
     };
 
+    // Create backup scheduler if backup manager exists
+    let backup_scheduler = if let Some(ref manager) = backup_manager {
+        let scheduler = Arc::new(BackupScheduler::new(manager.clone(), backup_status.clone()));
+
+        // Start the scheduler with configured interval
+        let interval = Duration::from_secs(config.backup.backup_interval_seconds);
+        let options = BackupOptions::default();
+
+        match scheduler.start(interval, options).await {
+            Ok(_) => {
+                tracing::info!(
+                    "Backup scheduler started with interval: {} seconds",
+                    config.backup.backup_interval_seconds
+                );
+                Some(scheduler)
+            }
+            Err(e) => {
+                tracing::error!("Failed to start backup scheduler: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Create the application state
     let state = Arc::new(AppState {
         templates: env,
         db_pool,
         backup_manager,
+        backup_scheduler,
     });
 
     // Set up the routes
