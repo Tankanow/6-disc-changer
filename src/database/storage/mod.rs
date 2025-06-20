@@ -15,10 +15,6 @@ use crate::database::Result;
 pub mod local_storage;
 pub mod s3_storage;
 
-// Re-export the storage providers for easier access
-pub use local_storage::LocalStorageProvider;
-pub use s3_storage::S3StorageProvider;
-
 /// Provides a unified interface for backup storage operations
 ///
 /// This trait allows the application to abstract away the details of

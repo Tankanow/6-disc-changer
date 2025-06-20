@@ -8,7 +8,7 @@ use crate::database::backup::{BackupManager, BackupOptions};
 use crate::database::backup_status::SharedBackupStatus;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{debug, error, info, warn};
@@ -23,6 +23,8 @@ pub struct BackupScheduler {
     scheduler_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
     /// Whether the scheduler is running
     is_running: Arc<RwLock<bool>>,
+    /// Notification for stopping the scheduler
+    stop_notify: Arc<Notify>,
 }
 
 impl BackupScheduler {
@@ -33,6 +35,7 @@ impl BackupScheduler {
             status,
             scheduler_handle: Arc::new(RwLock::new(None)),
             is_running: Arc::new(RwLock::new(false)),
+            stop_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -50,19 +53,27 @@ impl BackupScheduler {
         let backup_manager = self.backup_manager.clone();
         let status = self.status.clone();
         let is_running_flag = self.is_running.clone();
+        let stop_notify = self.stop_notify.clone();
 
         let handle = tokio::spawn(async move {
             let mut interval_timer = time::interval(interval);
             interval_timer.tick().await; // Skip the first immediate tick
 
             loop {
-                // Check if we should stop
-                if !*is_running_flag.read().await {
-                    info!("Backup scheduler stopping");
-                    break;
+                // Wait for either the interval tick or stop notification
+                tokio::select! {
+                    _ = interval_timer.tick() => {
+                        // Check if we should stop
+                        if !*is_running_flag.read().await {
+                            info!("Backup scheduler stopping");
+                            break;
+                        }
+                    }
+                    _ = stop_notify.notified() => {
+                        info!("Backup scheduler received stop notification");
+                        break;
+                    }
                 }
-
-                interval_timer.tick().await;
 
                 // Check backup status before attempting
                 let should_backup = {
@@ -109,22 +120,49 @@ impl BackupScheduler {
         Ok(())
     }
 
-    /// Stop the backup scheduler
-    pub async fn stop(&self) -> Result<()> {
+    /// Stop the backup scheduler gracefully
+    pub async fn stop(&self) {
         info!("Stopping backup scheduler");
 
         // Set running flag to false
         let mut is_running = self.is_running.write().await;
+        if !*is_running {
+            debug!("Backup scheduler is already stopped");
+            return;
+        }
         *is_running = false;
 
-        // Cancel the scheduler task
+        // Notify the scheduler task to stop
+        self.stop_notify.notify_waiters();
+
+        // Wait for the scheduler task to complete
         let mut handle_guard = self.scheduler_handle.write().await;
         if let Some(handle) = handle_guard.take() {
-            handle.abort();
-            debug!("Backup scheduler task aborted");
+            // Give it time to stop gracefully
+            if tokio::time::timeout(Duration::from_secs(5), handle)
+                .await
+                .is_err()
+            {
+                warn!("Backup scheduler task did not stop gracefully, aborting");
+                // The handle is already consumed by the timeout, nothing more to do
+            } else {
+                debug!("Backup scheduler task stopped gracefully");
+            }
+        }
+    }
+
+    /// Trigger an immediate backup outside the regular schedule
+    pub async fn trigger_immediate_backup(&self, options: BackupOptions) -> Result<String> {
+        info!("Triggering immediate backup from scheduler");
+
+        // Check if scheduler is running
+        if !*self.is_running.read().await {
+            warn!("Cannot trigger backup - scheduler is not running");
+            return Err(crate::database::DatabaseError::BackupServiceUnavailable);
         }
 
-        Ok(())
+        // Delegate to backup manager
+        self.backup_manager.create_backup(options).await
     }
 
     /// Check if the scheduler is currently running
@@ -200,7 +238,7 @@ mod tests {
         assert!(result.is_ok()); // Should succeed but log a warning
 
         // Stop the scheduler
-        scheduler.stop().await.unwrap();
+        scheduler.stop().await;
         assert!(!scheduler.is_running().await);
     }
 
@@ -231,6 +269,26 @@ mod tests {
             assert!(status_guard.is_backup_in_progress());
         }
 
-        scheduler.stop().await.unwrap();
+        scheduler.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_immediate_backup_trigger() {
+        let (manager, status, _temp_dir) = create_test_backup_manager().await;
+        let scheduler = BackupScheduler::new(manager, status);
+
+        // Start the scheduler
+        scheduler
+            .start(Duration::from_secs(60), BackupOptions::default())
+            .await
+            .unwrap();
+
+        // Trigger immediate backup
+        let result = scheduler
+            .trigger_immediate_backup(BackupOptions::default())
+            .await;
+        assert!(result.is_ok());
+
+        scheduler.stop().await;
     }
 }

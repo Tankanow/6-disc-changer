@@ -15,7 +15,7 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::database::backup_naming::BackupNamingService;
+use crate::database::backup_naming::{BackupNamingService, BackupType};
 use crate::database::backup_status::SharedBackupStatus;
 
 use crate::database::{DatabaseError, Result};
@@ -616,6 +616,130 @@ impl BackupManager {
                 BackupJobStatus::Running { .. } => true, // Always keep running jobs
             }
         });
+    }
+
+    /// Perform a shutdown backup - a special backup triggered during container shutdown
+    pub async fn perform_shutdown_backup(&self) -> Result<BackupResult> {
+        info!("Starting shutdown backup");
+
+        // Acquire backup mutex with timeout to prevent hanging
+        let _guard =
+            match tokio::time::timeout(Duration::from_secs(5), self.backup_mutex.lock()).await {
+                Ok(guard) => guard,
+                Err(_) => {
+                    error!("Failed to acquire backup mutex for shutdown backup - timeout");
+                    return Err(DatabaseError::BackupInProgress);
+                }
+            };
+
+        // Generate shutdown backup ID
+        let backup_id = self
+            .naming_service
+            .generate_backup_id_with_type(BackupType::Shutdown);
+        info!("Shutdown backup ID: {}", backup_id);
+
+        // Update status
+        {
+            let mut status = self.status.lock().unwrap();
+            status.start_backup();
+        }
+
+        let start_time = Instant::now();
+        let timestamp = Utc::now();
+
+        // Perform the backup with default options (fast, no verification)
+        let options = BackupOptions {
+            chunk_size: 128, // Larger chunks for faster backup
+            sleep_ms: 0,     // No sleep between chunks during shutdown
+            step_count: None,
+            verify: false, // Skip verification for speed
+        };
+
+        // Get a connection from the pool
+        let conn = match self.db_pool.acquire().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                error!(
+                    "Failed to acquire database connection for shutdown backup: {}",
+                    e
+                );
+                let mut status = self.status.lock().unwrap();
+                status.fail_backup(format!("Failed to acquire database connection: {}", e));
+                return Err(DatabaseError::Sqlite(e.to_string()));
+            }
+        };
+
+        // Create temporary directory for backup
+        let temp_dir = match tempdir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                error!("Failed to create temp directory for shutdown backup: {}", e);
+                let mut status = self.status.lock().unwrap();
+                status.fail_backup(format!("Failed to create temp directory: {}", e));
+                return Err(DatabaseError::Io(e));
+            }
+        };
+
+        let backup_path = temp_dir.path().join(format!("{}.db", &backup_id));
+
+        // Perform the backup
+        match Self::perform_backup_internal(conn, &backup_path, &backup_id, &options).await {
+            Ok(_) => {
+                // Get file size
+                let metadata = tokio::fs::metadata(&backup_path).await?;
+                let size_bytes = metadata.len();
+
+                // Upload to storage
+                match self
+                    .storage
+                    .store_backup(
+                        &backup_path,
+                        &backup_id,
+                        &self.naming_service.environment_dir(),
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        let duration = start_time.elapsed();
+                        info!(
+                            "Shutdown backup completed: {} ({} bytes) in {:?}",
+                            backup_id, size_bytes, duration
+                        );
+
+                        // Update status with size
+                        {
+                            let mut status = self.status.lock().unwrap();
+                            status.complete_backup(size_bytes);
+                        }
+
+                        Ok(BackupResult {
+                            backup_id,
+                            timestamp,
+                            duration,
+                            size_bytes,
+                            status: BackupStatus::Completed,
+                        })
+                    }
+                    Err(e) => {
+                        error!("Failed to upload shutdown backup: {}", e);
+                        let mut status = self.status.lock().unwrap();
+                        status.fail_backup(format!("Failed to upload shutdown backup: {}", e));
+                        Err(e)
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Shutdown backup failed: {}", e);
+
+                // Update status
+                {
+                    let mut status = self.status.lock().unwrap();
+                    status.fail_backup(format!("Shutdown backup failed: {}", e));
+                }
+
+                Err(e)
+            }
+        }
     }
 
     /// List all available backups

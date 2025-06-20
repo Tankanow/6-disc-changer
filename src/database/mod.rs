@@ -15,9 +15,7 @@ pub mod scheduler;
 // Public re-exports
 pub use backup::BackupManager;
 pub use backup_status::create_shared_status;
-pub use restoration_status::{
-    RestorationStatus, SharedRestorationStatus, create_shared_restoration_status,
-};
+pub use restoration_status::create_shared_restoration_status;
 pub use restore::RestorationChecker;
 pub use scheduler::BackupScheduler;
 
@@ -53,6 +51,9 @@ pub enum DatabaseError {
 
     #[error("Backup already in progress")]
     BackupInProgress,
+
+    #[error("Backup service unavailable")]
+    BackupServiceUnavailable,
 
     #[error("Restoration error: {0}")]
     Restoration(String),

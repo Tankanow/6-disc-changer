@@ -51,7 +51,7 @@
   - [x] 3.6 Add fallback mechanism for when restoration fails
 - [ ] 4.0 Configure Backup Scheduling and Container Lifecycle Hooks
   - [x] 4.1 Implement scheduler for regular 5-minute backup intervals
-  - [ ] 4.2 Add pre-shutdown backup trigger for container termination
+  - [x] 4.2 Add pre-shutdown backup trigger for container termination
   - [ ] 4.3 Configure fly.io container lifecycle hooks
   - [ ] 4.4 Implement graceful handling of backup cancellation during shutdown
   - [ ] 4.5 Add configuration options for backup frequency and timing

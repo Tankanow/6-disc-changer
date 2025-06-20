@@ -394,9 +394,9 @@ mod tests {
         fs::create_dir_all(&env_dir).await.unwrap();
 
         // Create some test backup files with proper naming format
-        let backup1 = "backup_2023-01-01_100000_test_abc123";
-        let backup2 = "backup_2023-01-02_100000_test_def456";
-        let backup3 = "backup_2023-01-01_150000_test_ghi789";
+        let backup1 = "backup_2023-01-01_100000_test_scheduled_abc123";
+        let backup2 = "backup_2023-01-02_100000_test_scheduled_def456";
+        let backup3 = "backup_2023-01-01_150000_test_scheduled_ghi789";
 
         // Files must be in the format expected by LocalStorageProvider
         fs::write(env_dir.join(format!("backup-{}.db", backup1)), b"backup1")

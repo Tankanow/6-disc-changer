@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Tracks the status and statistics of database restoration operations
 #[derive(Debug, Clone)]

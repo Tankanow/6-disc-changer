@@ -10,6 +10,38 @@ use rand::{Rng, thread_rng};
 use std::path::Path;
 use tracing::debug;
 
+/// Type of backup being performed
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackupType {
+    /// Regular scheduled backup
+    Scheduled,
+    /// Manual backup triggered by user
+    Manual,
+    /// Backup triggered during shutdown
+    Shutdown,
+}
+
+impl BackupType {
+    /// Get the string representation for the backup type
+    fn as_str(&self) -> &'static str {
+        match self {
+            BackupType::Scheduled => "scheduled",
+            BackupType::Manual => "manual",
+            BackupType::Shutdown => "shutdown",
+        }
+    }
+
+    /// Parse a backup type from string
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "scheduled" => Some(BackupType::Scheduled),
+            "manual" => Some(BackupType::Manual),
+            "shutdown" => Some(BackupType::Shutdown),
+            _ => None,
+        }
+    }
+}
+
 /// Service for generating backup identifiers
 #[derive(Debug, Clone)]
 pub struct BackupNamingService {
@@ -33,8 +65,22 @@ impl BackupNamingService {
         self.generate_backup_id_with_time(Utc::now())
     }
 
+    /// Generate a new backup ID with specific backup type
+    pub fn generate_backup_id_with_type(&self, backup_type: BackupType) -> String {
+        self.generate_backup_id_with_time_and_type(Utc::now(), backup_type)
+    }
+
     /// Generate a backup ID using the specified timestamp (primarily for testing)
     pub fn generate_backup_id_with_time(&self, timestamp: DateTime<Utc>) -> String {
+        self.generate_backup_id_with_time_and_type(timestamp, BackupType::Scheduled)
+    }
+
+    /// Generate a backup ID using the specified timestamp and type
+    pub fn generate_backup_id_with_time_and_type(
+        &self,
+        timestamp: DateTime<Utc>,
+        backup_type: BackupType,
+    ) -> String {
         let date_part = timestamp.format("%Y-%m-%d");
         let time_part = timestamp.format("%H%M%S");
 
@@ -47,8 +93,13 @@ impl BackupNamingService {
         };
 
         format!(
-            "backup_{}_{}_{}{}_{}",
-            date_part, time_part, self.environment, server_part, random_suffix
+            "backup_{}_{}_{}{}_{}_{}",
+            date_part,
+            time_part,
+            self.environment,
+            server_part,
+            backup_type.as_str(),
+            random_suffix
         )
     }
 
@@ -75,6 +126,8 @@ pub struct BackupId {
     environment: String,
     /// Optional server identifier for multi-server deployments
     server_id: Option<String>,
+    /// Type of backup
+    backup_type: BackupType,
     /// Random suffix for uniqueness
     random_suffix: String,
 }
@@ -82,13 +135,13 @@ pub struct BackupId {
 impl BackupId {
     /// Parse a backup ID string into a structured representation
     ///
-    /// Format: backup_{DATE}_{TIME}_{ENV}_{SERVER_ID}_{RANDOM}
-    /// or:     backup_{DATE}_{TIME}_{ENV}_{RANDOM}
+    /// Format: backup_{DATE}_{TIME}_{ENV}_{SERVER_ID}_{TYPE}_{RANDOM}
+    /// or:     backup_{DATE}_{TIME}_{ENV}_{TYPE}_{RANDOM}
     pub fn parse(backup_id: &str) -> Option<Self> {
         let parts: Vec<&str> = backup_id.split('_').collect();
 
         debug!("Parsing backup ID: {:?}", parts);
-        if parts.len() < 5 || parts[0] != "backup" {
+        if parts.len() < 6 || parts[0] != "backup" {
             return None;
         }
 
@@ -114,12 +167,18 @@ impl BackupId {
         // Parse environment and optional server ID
         let environment = parts[3].to_string();
 
-        let (server_id, random_suffix) = if parts.len() > 5 {
+        let (server_id, backup_type, random_suffix) = if parts.len() > 6 {
             // Has server ID
-            (Some(parts[4].to_string()), parts[5].to_string())
+            let backup_type = BackupType::from_str(parts[5])?;
+            (
+                Some(parts[4].to_string()),
+                backup_type,
+                parts[6].to_string(),
+            )
         } else {
             // No server ID
-            (None, parts[4].to_string())
+            let backup_type = BackupType::from_str(parts[4])?;
+            (None, backup_type, parts[5].to_string())
         };
 
         Some(Self {
@@ -127,6 +186,7 @@ impl BackupId {
             timestamp,
             environment,
             server_id,
+            backup_type,
             random_suffix,
         })
     }
@@ -149,6 +209,11 @@ impl BackupId {
     /// Get the server identifier, if any
     pub fn server_id(&self) -> Option<&str> {
         self.server_id.as_deref()
+    }
+
+    /// Get the backup type
+    pub fn backup_type(&self) -> BackupType {
+        self.backup_type
     }
 
     /// Get the random suffix
@@ -196,9 +261,9 @@ mod tests {
 
         let backup_id = service.generate_backup_id_with_time(timestamp);
 
-        // The format should be backup_2025-06-01_143000_dev_RANDOM
-        assert!(backup_id.starts_with("backup_2025-06-01_143000_dev_"));
-        assert_eq!(backup_id.len(), 35); // Fixed length with 6-char random suffix
+        // The format should be backup_2025-06-01_143000_dev_scheduled_RANDOM
+        assert!(backup_id.starts_with("backup_2025-06-01_143000_dev_scheduled_"));
+        assert_eq!(backup_id.len(), 45); // Fixed length with 6-char random suffix
     }
 
     #[test]
@@ -210,30 +275,32 @@ mod tests {
 
         let backup_id = service.generate_backup_id_with_time(timestamp);
 
-        // The format should be backup_2025-06-01_143000_prod_server1_RANDOM
-        assert!(backup_id.starts_with("backup_2025-06-01_143000_prod_server1_"));
+        // The format should be backup_2025-06-01_143000_prod_server1_scheduled_RANDOM
+        assert!(backup_id.starts_with("backup_2025-06-01_143000_prod_server1_scheduled_"));
     }
 
     #[test]
     fn test_parse_backup_id() {
         // Test parsing a backup ID without server ID
-        let backup_id = "backup_2025-06-01_143000_dev_abcdef";
+        let backup_id = "backup_2025-06-01_143000_dev_scheduled_abcdef";
         let parsed = BackupId::parse(backup_id).unwrap();
 
         assert_eq!(parsed.id(), backup_id);
         assert_eq!(parsed.environment(), "dev");
         assert_eq!(parsed.server_id(), None);
+        assert_eq!(parsed.backup_type(), BackupType::Scheduled);
         assert_eq!(parsed.random_suffix(), "abcdef");
 
         let expected_timestamp = Utc.with_ymd_and_hms(2025, 6, 1, 14, 30, 0).unwrap();
         assert_eq!(*parsed.timestamp(), expected_timestamp);
 
         // Test parsing a backup ID with server ID
-        let backup_id = "backup_2025-06-01_143000_prod_server1_abcdef";
+        let backup_id = "backup_2025-06-01_143000_prod_server1_shutdown_abcdef";
         let parsed = BackupId::parse(backup_id).unwrap();
 
         assert_eq!(parsed.environment(), "prod");
         assert_eq!(parsed.server_id(), Some("server1"));
+        assert_eq!(parsed.backup_type(), BackupType::Shutdown);
         assert_eq!(parsed.random_suffix(), "abcdef");
     }
 
@@ -243,21 +310,24 @@ mod tests {
         assert!(BackupId::parse("backup_2025-06-01_143000_dev").is_none());
 
         // Wrong prefix
-        assert!(BackupId::parse("wrong_2025-06-01_143000_dev_abcdef").is_none());
+        assert!(BackupId::parse("wrong_2025-06-01_143000_dev_scheduled_abcdef").is_none());
 
         // Invalid date format
-        assert!(BackupId::parse("backup_20250601_143000_dev_abcdef").is_none());
+        assert!(BackupId::parse("backup_20250601_143000_dev_scheduled_abcdef").is_none());
+
+        // Invalid backup type
+        assert!(BackupId::parse("backup_2025-06-01_143000_dev_invalid_abcdef").is_none());
     }
 
     #[test]
     fn test_get_environment_from_backup_id() {
         assert_eq!(
-            get_environment_from_backup_id("backup_2025-06-01_143000_dev_abcdef"),
+            get_environment_from_backup_id("backup_2025-06-01_143000_dev_scheduled_abcdef"),
             Some("dev".to_string())
         );
 
         assert_eq!(
-            get_environment_from_backup_id("backup_2025-06-01_143000_prod_server1_abcdef"),
+            get_environment_from_backup_id("backup_2025-06-01_143000_prod_server1_shutdown_abcdef"),
             Some("prod".to_string())
         );
 
@@ -265,25 +335,41 @@ mod tests {
     }
 
     #[test]
+    fn test_backup_type_generation() {
+        let service = BackupNamingService::new("dev", None);
+        let timestamp = Utc.with_ymd_and_hms(2025, 6, 1, 14, 30, 0).unwrap();
+
+        // Test shutdown backup
+        let shutdown_id =
+            service.generate_backup_id_with_time_and_type(timestamp, BackupType::Shutdown);
+        assert!(shutdown_id.contains("_shutdown_"));
+
+        // Test manual backup
+        let manual_id =
+            service.generate_backup_id_with_time_and_type(timestamp, BackupType::Manual);
+        assert!(manual_id.contains("_manual_"));
+    }
+
+    #[test]
     fn test_get_backup_storage_path() {
         let base_dir = Path::new("/backups");
-        let backup_id = "backup_2025-06-01_143000_dev_abcdef";
+        let backup_id = "backup_2025-06-01_143000_dev_scheduled_abcdef";
 
         let path = get_backup_storage_path(base_dir, backup_id).unwrap();
         assert_eq!(
             path,
-            Path::new("/backups/dev/backup_2025-06-01_143000_dev_abcdef.db")
+            Path::new("/backups/dev/backup_2025-06-01_143000_dev_scheduled_abcdef.db")
         );
     }
 
     #[test]
     fn test_get_backup_s3_key() {
-        let backup_id = "backup_2025-06-01_143000_dev_abcdef";
+        let backup_id = "backup_2025-06-01_143000_dev_scheduled_abcdef";
 
         let key = get_backup_s3_key("backups", backup_id).unwrap();
         assert_eq!(
             key,
-            "backups/dev/backup-backup_2025-06-01_143000_dev_abcdef.db"
+            "backups/dev/backup-backup_2025-06-01_143000_dev_scheduled_abcdef.db"
         );
     }
 }

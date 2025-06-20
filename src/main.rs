@@ -14,12 +14,14 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod config;
 mod database;
 mod db;
+mod shutdown;
 
 use config::Config;
 use database::{
     BackupManager, BackupScheduler, RestorationChecker, backup::BackupOptions,
     create_shared_restoration_status, create_shared_status, storage::create_storage_provider,
 };
+use shutdown::{ShutdownManager, setup_signal_handlers};
 use tokio::time::Duration;
 
 // Define a struct to hold our application state
@@ -191,6 +193,11 @@ async fn main() {
         }
     };
 
+    // Create shutdown manager if backup manager exists
+    let shutdown_manager = backup_manager
+        .as_ref()
+        .map(|manager| Arc::new(ShutdownManager::new(manager.clone())));
+
     // Create backup scheduler if backup manager exists
     let backup_scheduler = if let Some(ref manager) = backup_manager {
         let scheduler = Arc::new(BackupScheduler::new(manager.clone(), backup_status.clone()));
@@ -205,6 +212,12 @@ async fn main() {
                     "Backup scheduler started with interval: {} seconds",
                     config.backup.backup_interval_seconds
                 );
+
+                // Set scheduler reference in shutdown manager
+                if let Some(ref shutdown_mgr) = shutdown_manager {
+                    shutdown_mgr.set_scheduler(scheduler.clone()).await;
+                }
+
                 Some(scheduler)
             }
             Err(e) => {
@@ -233,7 +246,30 @@ async fn main() {
         .route("/users/list", get(list_users_handler))
         .with_state(state);
 
+    // Set up signal handlers if we have a shutdown manager
+    let shutdown_signal = if let Some(ref shutdown_mgr) = shutdown_manager {
+        info!("Setting up signal handlers for graceful shutdown");
+        setup_signal_handlers(shutdown_mgr.clone()).await;
+        Some(shutdown_mgr.get_shutdown_signal())
+    } else {
+        None
+    };
+
     info!("Server starting on http://0.0.0.0:8080");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+
+    // Run the server with graceful shutdown if shutdown manager is available
+    if let Some(signal) = shutdown_signal {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                signal.notified().await;
+                info!("Graceful shutdown complete");
+            })
+            .await
+            .unwrap();
+    } else {
+        axum::serve(listener, app).await.unwrap();
+    }
+
+    info!("Server shut down");
 }
