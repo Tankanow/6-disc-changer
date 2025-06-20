@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::database::backup_naming::BackupNamingService;
+use crate::database::backup_status::SharedBackupStatus;
 
 use crate::database::{DatabaseError, Result};
 
@@ -136,6 +137,8 @@ pub struct BackupManager {
     active_jobs: Arc<RwLock<HashMap<String, BackupJob>>>,
     /// Job handles for tracking spawned tasks
     job_handles: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    /// Backup status tracker
+    status: SharedBackupStatus,
 }
 
 impl BackupManager {
@@ -145,6 +148,7 @@ impl BackupManager {
         storage: Arc<dyn StorageProvider>,
         environment: &str,
         server_id: Option<&str>,
+        status: SharedBackupStatus,
     ) -> Self {
         Self {
             db_pool,
@@ -153,12 +157,22 @@ impl BackupManager {
             naming_service: BackupNamingService::new(environment, server_id),
             active_jobs: Arc::new(RwLock::new(HashMap::new())),
             job_handles: Arc::new(Mutex::new(HashMap::new())),
+            status,
         }
     }
 
     /// Create a backup of the database in a background thread
     /// Returns immediately with a job ID that can be used to track progress
     pub async fn create_backup(&self, options: BackupOptions) -> Result<String> {
+        // Check if a backup is already in progress
+        {
+            let mut status = self.status.lock().unwrap();
+            if !status.start_backup() {
+                warn!("Backup already in progress, rejecting new backup request");
+                return Err(DatabaseError::BackupInProgress);
+            }
+        }
+
         // Generate job ID
         let job_id = format!(
             "job_{}",
@@ -190,6 +204,7 @@ impl BackupManager {
         let backup_mutex = self.backup_mutex.clone();
         let active_jobs = self.active_jobs.clone();
         let job_handles = self.job_handles.clone();
+        let status_tracker = self.status.clone();
 
         // Spawn the backup task
         let handle = tokio::spawn(async move {
@@ -201,6 +216,7 @@ impl BackupManager {
                 naming_service,
                 backup_mutex,
                 active_jobs.clone(),
+                status_tracker,
                 options,
             )
             .await;
@@ -253,6 +269,7 @@ impl BackupManager {
         naming_service: BackupNamingService,
         backup_mutex: Arc<Mutex<()>>,
         active_jobs: Arc<RwLock<HashMap<String, BackupJob>>>,
+        status_tracker: SharedBackupStatus,
         options: BackupOptions,
     ) -> Result<BackupResult> {
         debug!("Waiting to acquire backup mutex for job {}", job_id);
@@ -266,6 +283,13 @@ impl BackupManager {
             if let Some(job) = jobs.get(&job_id) {
                 if matches!(job.status, BackupJobStatus::Cancelled { .. }) {
                     warn!("Backup job {} was cancelled before starting", job_id);
+
+                    // Update status tracker
+                    {
+                        let mut status = status_tracker.lock().unwrap();
+                        status.fail_backup("Backup was cancelled".to_string());
+                    }
+
                     return Ok(BackupResult {
                         backup_id: String::new(),
                         timestamp: Utc::now(),
@@ -312,6 +336,13 @@ impl BackupManager {
                     .await
                 {
                     error!("Failed to store backup {}: {}", backup_id, e);
+
+                    // Update status tracker
+                    {
+                        let mut status = status_tracker.lock().unwrap();
+                        status.fail_backup(format!("Failed to store backup: {}", e));
+                    }
+
                     return Ok(BackupResult {
                         backup_id,
                         timestamp,
@@ -321,11 +352,50 @@ impl BackupManager {
                     });
                 }
 
+                // Verify the backup was uploaded by checking if it exists
+                info!("Verifying backup {} was uploaded successfully", backup_id);
+                match storage.backup_exists(&backup_id).await {
+                    Ok(true) => {
+                        debug!("Backup {} verified in storage", backup_id);
+                    }
+                    Ok(false) => {
+                        error!("Backup {} not found in storage after upload", backup_id);
+
+                        // Update status tracker
+                        {
+                            let mut status = status_tracker.lock().unwrap();
+                            status.fail_backup(
+                                "Backup verification failed - not found in storage".to_string(),
+                            );
+                        }
+
+                        return Ok(BackupResult {
+                            backup_id,
+                            timestamp,
+                            duration: start_time.elapsed(),
+                            size_bytes,
+                            status: BackupStatus::Failed(
+                                "Backup not found in storage after upload".to_string(),
+                            ),
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Could not verify backup {} existence: {}", backup_id, e);
+                        // Continue anyway - the upload didn't error
+                    }
+                }
+
                 let duration = start_time.elapsed();
                 info!(
                     "Backup {} completed successfully in {:?}, size: {} bytes",
                     backup_id, duration, size_bytes
                 );
+
+                // Update status tracker
+                {
+                    let mut status = status_tracker.lock().unwrap();
+                    status.complete_backup(size_bytes);
+                }
 
                 // Return successful result
                 Ok(BackupResult {
@@ -338,6 +408,13 @@ impl BackupManager {
             }
             Err(e) => {
                 error!("Backup {} failed: {}", backup_id, e);
+
+                // Update status tracker
+                {
+                    let mut status = status_tracker.lock().unwrap();
+                    status.fail_backup(e.to_string());
+                }
+
                 // Return failed result
                 Ok(BackupResult {
                     backup_id,
@@ -529,9 +606,9 @@ impl BackupManager {
         debug!("Cleaning up backup jobs older than {:?}", older_than);
 
         let mut jobs = self.active_jobs.write().await;
-        let initial_count = jobs.len();
+        let _initial_count = jobs.len();
 
-        jobs.retain(|job_id, job| {
+        jobs.retain(|_job_id, job| {
             match &job.status {
                 BackupJobStatus::Completed { result } => result.timestamp > cutoff_time,
                 BackupJobStatus::Failed { failed_at, .. } => *failed_at > cutoff_time,
@@ -544,6 +621,11 @@ impl BackupManager {
     /// List all available backups
     pub async fn list_backups(&self) -> Result<Vec<String>> {
         self.storage.list_backups().await
+    }
+
+    /// Get the backup status tracker
+    pub fn get_status(&self) -> &SharedBackupStatus {
+        &self.status
     }
 
     /// Get the latest backup ID
@@ -566,6 +648,7 @@ impl BackupManager {
 mod tests {
     use super::*;
     use crate::config::BackupConfig;
+    use crate::database::backup_status::create_shared_status;
     use crate::database::storage::local_storage::LocalStorageProvider;
     use sqlx::{SqlitePool, migrate::MigrateDatabase};
     use std::sync::Arc;
@@ -642,7 +725,8 @@ mod tests {
         let storage = Arc::new(LocalStorageProvider::new(&config));
 
         // Create backup manager
-        let backup_manager = BackupManager::new(pool.clone(), storage, "test", None);
+        let status = create_shared_status();
+        let backup_manager = BackupManager::new(pool.clone(), storage, "test", None, status);
 
         // Create backup with default options (now returns job ID)
         let job_id = backup_manager
@@ -717,7 +801,8 @@ mod tests {
         let storage = Arc::new(LocalStorageProvider::new(&config));
 
         // Create backup manager
-        let backup_manager = BackupManager::new(pool.clone(), storage, "test", None);
+        let status = create_shared_status();
+        let backup_manager = BackupManager::new(pool.clone(), storage, "test", None, status);
 
         // Start a backup in the background
         let job_id = backup_manager
@@ -794,7 +879,14 @@ mod tests {
         let storage = Arc::new(LocalStorageProvider::new(&config));
 
         // Create backup manager
-        let backup_manager = Arc::new(BackupManager::new(pool.clone(), storage, "test", None));
+        let status = create_shared_status();
+        let backup_manager = Arc::new(BackupManager::new(
+            pool.clone(),
+            storage,
+            "test",
+            None,
+            status,
+        ));
 
         // Start multiple backups concurrently
         let mut job_ids = Vec::new();
@@ -860,7 +952,8 @@ mod tests {
         let storage = Arc::new(LocalStorageProvider::new(&config));
 
         // Create backup manager
-        let backup_manager = BackupManager::new(pool.clone(), storage, "test", None);
+        let status = create_shared_status();
+        let backup_manager = BackupManager::new(pool.clone(), storage, "test", None, status);
 
         // Create a few completed jobs
         let job1 = BackupJob {

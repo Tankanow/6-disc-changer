@@ -15,10 +15,14 @@ mod config;
 mod database;
 mod db;
 
+use config::Config;
+use database::{BackupManager, create_shared_status, storage::create_storage_provider};
+
 // Define a struct to hold our application state
 struct AppState {
     templates: Environment<'static>,
     db_pool: db::DbPool,
+    backup_manager: Option<Arc<BackupManager>>,
 }
 
 // Handler for the index route
@@ -110,10 +114,34 @@ async fn main() {
     let db_pool = db::init_db().await.expect("Failed to initialize database");
     info!("Database initialized successfully");
 
+    // Load configuration
+    let config = Config::from_env();
+
+    // Initialize backup infrastructure
+    let backup_manager = match create_storage_provider(&config.backup).await {
+        Ok(storage) => {
+            let backup_status = create_shared_status();
+            let manager = BackupManager::new(
+                db_pool.clone(),
+                storage.into(),
+                &config.backup.environment,
+                config.backup.server_id.as_deref(),
+                backup_status.clone(),
+            );
+            info!("Backup manager initialized successfully");
+            Some(Arc::new(manager))
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize backup infrastructure: {}", e);
+            None
+        }
+    };
+
     // Create the application state
     let state = Arc::new(AppState {
         templates: env,
         db_pool,
+        backup_manager,
     });
 
     // Set up the routes

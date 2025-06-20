@@ -6,17 +6,17 @@ pub mod storage;
 // Database modules
 pub mod backup;
 pub mod backup_naming;
+pub mod backup_status;
 // These will be implemented in future tasks
 // mod restore;
-// mod scheduler;
+pub mod scheduler;
 // mod s3_client;
 
 // Public re-exports
-pub use backup::{
-    BackupJob, BackupJobStatus, BackupManager, BackupOptions, BackupResult, BackupStatus,
-};
+pub use backup::BackupManager;
+pub use backup_status::create_shared_status;
 // pub use restore::*;
-// pub use scheduler::*;
+pub use scheduler::BackupScheduler;
 
 /// SQLite database file path
 pub const DATABASE_PATH: &str = "db.sqlite";
@@ -47,6 +47,9 @@ pub enum DatabaseError {
 
     #[error("Backup error: {0}")]
     Backup(String),
+
+    #[error("Backup already in progress")]
+    BackupInProgress,
 }
 
 /// Result type for database operations
