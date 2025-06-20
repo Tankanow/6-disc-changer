@@ -294,6 +294,42 @@ impl StorageProvider for LocalStorageProvider {
         Ok(backup_path.exists())
     }
 
+    async fn read_backup(&self, backup_id: &str) -> Result<Vec<u8>> {
+        // Try to parse the environment from the backup ID
+        let environment = crate::database::backup_naming::get_environment_from_backup_id(backup_id)
+            .unwrap_or_else(|| {
+                debug!(
+                    "Could not parse environment from backup ID {}, defaulting to 'dev'",
+                    backup_id
+                );
+                String::from("dev")
+            });
+
+        let backup_path = self.get_backup_path(backup_id, &environment);
+        info!(
+            "Reading backup {} from local storage: {:?}",
+            backup_id, backup_path
+        );
+
+        if !backup_path.exists() {
+            warn!("Backup {} not found at {:?}", backup_id, backup_path);
+            return Err(DatabaseError::BackupNotFound);
+        }
+
+        // Read the backup file contents
+        let data = tokio_fs::read(&backup_path).await.map_err(|e| {
+            error!("Failed to read backup file {:?}: {}", backup_path, e);
+            DatabaseError::Io(e)
+        })?;
+
+        debug!(
+            "Successfully read backup {} ({} bytes)",
+            backup_id,
+            data.len()
+        );
+        Ok(data)
+    }
+
     async fn cleanup_old_backups(&self, keep_count: usize) -> Result<()> {
         info!(
             "Starting cleanup of old backups, keeping {} most recent",

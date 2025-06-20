@@ -29,6 +29,10 @@ pub struct BackupConfig {
     pub backup_interval_seconds: u64,
     /// Shutdown backup timeout in seconds
     pub shutdown_backup_timeout_seconds: u64,
+    /// Force database restoration on startup even if database exists
+    pub force_restoration: bool,
+    /// Skip restoration if no backups are available
+    pub skip_restoration_if_no_backups: bool,
 }
 
 impl Default for BackupConfig {
@@ -46,6 +50,8 @@ impl Default for BackupConfig {
             server_id: None,
             backup_interval_seconds: 300, // 5 minutes
             shutdown_backup_timeout_seconds: 30,
+            force_restoration: false,
+            skip_restoration_if_no_backups: true,
         }
     }
 }
@@ -92,6 +98,14 @@ impl BackupConfig {
             .and_then(|v| v.parse().ok())
             .unwrap_or(30);
 
+        let force_restoration = env::var("BACKUP_FORCE_RESTORATION")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false);
+
+        let skip_restoration_if_no_backups = env::var("BACKUP_SKIP_RESTORATION_IF_NO_BACKUPS")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(true);
+
         Self {
             database_path,
             use_aws,
@@ -105,6 +119,8 @@ impl BackupConfig {
             server_id,
             backup_interval_seconds,
             shutdown_backup_timeout_seconds,
+            force_restoration,
+            skip_restoration_if_no_backups,
         }
     }
 

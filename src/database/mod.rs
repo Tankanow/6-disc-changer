@@ -7,15 +7,18 @@ pub mod storage;
 pub mod backup;
 pub mod backup_naming;
 pub mod backup_status;
-// These will be implemented in future tasks
-// mod restore;
+pub mod restoration_status;
+pub mod restore;
 pub mod scheduler;
 // mod s3_client;
 
 // Public re-exports
 pub use backup::BackupManager;
 pub use backup_status::create_shared_status;
-// pub use restore::*;
+pub use restoration_status::{
+    RestorationStatus, SharedRestorationStatus, create_shared_restoration_status,
+};
+pub use restore::RestorationChecker;
 pub use scheduler::BackupScheduler;
 
 /// SQLite database file path
@@ -50,7 +53,14 @@ pub enum DatabaseError {
 
     #[error("Backup already in progress")]
     BackupInProgress,
+
+    #[error("Restoration error: {0}")]
+    Restoration(String),
+
+    #[error("File system error: {0}")]
+    FileSystem(String),
 }
 
 /// Result type for database operations
 pub type Result<T> = std::result::Result<T, DatabaseError>;
+pub type DatabaseResult<T> = Result<T>;

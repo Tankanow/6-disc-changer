@@ -4,8 +4,6 @@
 //! backup identifiers that include environment information and are sortable
 //! by creation time.
 
-#[cfg(test)]
-use chrono::TimeZone;
 use chrono::{DateTime, Utc};
 use rand::distributions::Alphanumeric;
 use rand::{Rng, thread_rng};

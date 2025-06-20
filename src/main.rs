@@ -16,7 +16,10 @@ mod database;
 mod db;
 
 use config::Config;
-use database::{BackupManager, create_shared_status, storage::create_storage_provider};
+use database::{
+    BackupManager, RestorationChecker, create_shared_restoration_status, create_shared_status,
+    storage::create_storage_provider,
+};
 
 // Define a struct to hold our application state
 struct AppState {
@@ -110,12 +113,61 @@ async fn main() {
     let mut env = Environment::new();
     env.set_loader(path_loader("templates"));
 
-    // Initialize the database
-    let db_pool = db::init_db().await.expect("Failed to initialize database");
-    info!("Database initialized successfully");
-
     // Load configuration
     let config = Config::from_env();
+
+    // Check if database restoration is needed before initialization
+    let restoration_performed = if config.backup.force_restoration
+        || !config.backup.database_path.exists()
+    {
+        match create_storage_provider(&config.backup).await {
+            Ok(storage) => {
+                let restoration_status = create_shared_restoration_status();
+                let restoration_checker = RestorationChecker::new(
+                    config.backup.database_path.clone(),
+                    storage.into(),
+                    &config.backup.environment,
+                    config.backup.server_id.as_deref(),
+                    restoration_status,
+                );
+
+                match restoration_checker.check_and_restore_if_needed().await {
+                    Ok(restored) => {
+                        if restored {
+                            info!("Database restored from backup");
+                        }
+                        restored
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to restore database: {}. Starting with fresh database.",
+                            e
+                        );
+                        false
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to initialize storage for restoration: {}. Starting with fresh database.",
+                    e
+                );
+                false
+            }
+        }
+    } else {
+        info!("Database exists and force restoration not requested, skipping restoration check");
+        false
+    };
+
+    // Initialize the database
+    let db_pool = db::init_db(&config.backup.database_path)
+        .await
+        .expect("Failed to initialize database");
+    info!(
+        "Database initialized successfully (restored: {})",
+        restoration_performed
+    );
 
     // Initialize backup infrastructure
     let backup_manager = match create_storage_provider(&config.backup).await {

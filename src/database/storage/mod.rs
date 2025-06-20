@@ -15,6 +15,10 @@ use crate::database::Result;
 pub mod local_storage;
 pub mod s3_storage;
 
+// Re-export the storage providers for easier access
+pub use local_storage::LocalStorageProvider;
+pub use s3_storage::S3StorageProvider;
+
 /// Provides a unified interface for backup storage operations
 ///
 /// This trait allows the application to abstract away the details of
@@ -79,6 +83,14 @@ pub trait StorageProvider: Send + Sync {
     /// # Arguments
     /// * `backup_id` - Identifier of the backup to check
     async fn backup_exists(&self, backup_id: &str) -> Result<bool>;
+
+    /// Read backup data from storage
+    ///
+    /// # Arguments
+    /// * `backup_id` - Identifier of the backup to read
+    ///
+    /// Returns the backup data as bytes
+    async fn read_backup(&self, backup_id: &str) -> Result<Vec<u8>>;
 
     /// Clean up old backups, keeping only the most recent ones
     ///
