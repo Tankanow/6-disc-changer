@@ -20,4 +20,9 @@ target/
 
 /target
 .env
+.github-repo-secrets.env
+
+# Repo Data Files
 db.*
+/data
+/backups

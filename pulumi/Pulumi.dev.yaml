@@ -1,0 +1,7 @@
+config:
+  aws:region: "us-west-2"
+  sqlite-backup-restore:backupBucketName: "6-disc-changer-dev-sqlite-backups"
+  sqlite-backup-restore:awsAccountId: "214549340182"
+  sqlite-backup-restore:flyAppName: "6-disc-changer-wispy-thunder-1019"
+  sqlite-backup-restore:flyOrgSlug: "adam-tankanow"
+encryptionsalt: v1:vX2SeSN6Hrs=:v1:kauNZMOGAKCnQcm7:rNMtYLoxq9CkK7V6SpeRxpmRTiShJA==

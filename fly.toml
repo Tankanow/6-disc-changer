@@ -10,7 +10,11 @@ primary_region = 'bos'
 
 [env]
 PORT = '8080'
-DATABASE_URL = 'sqlite:db.sqlite'
+DATABASE_PATH = 'data/db'
+BACKUP_USE_AWS = 'true'
+BACKUP_S3_BUCKET = '6-disc-changer-dev-sqlite-backups'
+AWS_REGION = 'us-west-2'
+AWS_ROLE_ARN = 'arn:aws:iam::214549340182:role/six-disc-changer-backup-restore-dev'
 
 [http_service]
 internal_port = 8080

@@ -1,6 +1,6 @@
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: false
 ---
 # Task List Management
@@ -9,9 +9,9 @@ Guidelines for managing task lists in markdown files to track progress on comple
 
 ## Task Implementation
 - **One sub-task at a time:** Do **NOT** start the next sub‑task until you ask the user for permission and they say “yes” or "y"
-- **Completion protocol:**  
-  1. When you finish a **sub‑task**, immediately mark it as completed by changing `[ ]` to `[x]`.  
-  2. If **all** subtasks underneath a parent task are now `[x]`, also mark the **parent task** as completed.  
+- **Completion protocol:**
+  1. When you finish a **sub‑task**, immediately mark it as completed by changing `[ ]` to `[x]`.
+  2. If **all** subtasks underneath a parent task are now `[x]`, also mark the **parent task** as completed.
 - Stop after each sub‑task and wait for the user’s go‑ahead.
 
 ## Task List Maintenance
@@ -24,6 +24,9 @@ Guidelines for managing task lists in markdown files to track progress on comple
    - List every file created or modified.
    - Give each file a one‑line description of its purpose.
 
+## Docs
+1. When generating docs in `docs/` AI *MUST* use this file pattern, `[date]-[number]-[description].md` where [date] is in the format `YYYY-MM-DD` and [number] is a sequential number starting from 01 e.g. `2025-06-01-02-fly-io-oidc-setup.md`.
+
 ## AI Instructions
 
 When working with task lists, the AI must:
@@ -35,4 +38,5 @@ When working with task lists, the AI must:
 3. Add newly discovered tasks.
 4. Keep “Relevant Files” accurate and up to date.
 5. Before starting work, check which sub‑task is next.
-6. After implementing a sub‑task, update the file and then pause for user approval.
+6. When starting work, AI *must* ask _before_ editing any files.
+7. After implementing a sub‑task, update the file and then pause for user approval.
