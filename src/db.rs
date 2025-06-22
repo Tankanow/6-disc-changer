@@ -6,6 +6,7 @@ use sqlx::{
 };
 use std::path::Path;
 use std::str::FromStr;
+use tracing::info;
 
 // Database connection pool type
 pub type DbPool = Pool<Sqlite>;
@@ -13,24 +14,26 @@ pub type DbPool = Pool<Sqlite>;
 /// Initialize the database, running migrations if necessary
 pub async fn init_db(database_path: &Path) -> Result<DbPool, sqlx::Error> {
     let db_url = format!("sqlite:{}", database_path.display());
+    info!("Initializing database at {}", &db_url);
 
     // Create database if it doesn't exist
     if !Sqlite::database_exists(&db_url).await.unwrap_or(false) {
+        info!("Database does not exist; creating");
         Sqlite::create_database(&db_url).await?;
     }
 
-    // Set up connection options
+    info!("Setting up connection options");
     let options = SqliteConnectOptions::from_str(&db_url)?
         .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
 
-    // Create connection pool
+    info!("Creating connection pool");
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(options)
         .await?;
 
-    // Run migrations
+    info!("Running migrations");
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     Ok(pool)
