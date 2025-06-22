@@ -8,13 +8,28 @@ use dotenv::dotenv;
 use minijinja::{Environment, path_loader};
 use serde::Deserialize;
 use std::sync::Arc;
+use tracing::info;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod config;
+mod database;
 mod db;
+mod shutdown;
+
+use config::Config;
+use database::{
+    BackupManager, BackupScheduler, RestorationChecker, backup::BackupOptions,
+    create_shared_restoration_status, create_shared_status, storage::create_storage_provider,
+};
+use shutdown::{ShutdownManager, setup_signal_handlers};
+use tokio::time::Duration;
 
 // Define a struct to hold our application state
 struct AppState {
     templates: Environment<'static>,
     db_pool: db::DbPool,
+    backup_manager: Option<Arc<BackupManager>>,
+    backup_scheduler: Option<Arc<BackupScheduler>>,
 }
 
 // Handler for the index route
@@ -90,18 +105,136 @@ async fn main() {
     // Load .env file
     dotenv().ok();
 
+    // Initialize tracing subscriber for structured logging
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
     // Set up the template environment
     let mut env = Environment::new();
     env.set_loader(path_loader("templates"));
 
+    // Load configuration
+    let config = Config::from_env();
+
+    // Check if database restoration is needed before initialization
+    let restoration_performed = if config.backup.force_restoration
+        || !config.backup.database_path.exists()
+    {
+        match create_storage_provider(&config.backup).await {
+            Ok(storage) => {
+                let restoration_status = create_shared_restoration_status();
+                let restoration_checker = RestorationChecker::new(
+                    config.backup.database_path.clone(),
+                    storage.into(),
+                    &config.backup.environment,
+                    config.backup.server_id.as_deref(),
+                    restoration_status,
+                );
+
+                match restoration_checker.check_and_restore_if_needed().await {
+                    Ok(restored) => {
+                        if restored {
+                            info!("Database restored from backup");
+                        }
+                        restored
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to restore database: {}. Starting with fresh database.",
+                            e
+                        );
+                        false
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to initialize storage for restoration: {}. Starting with fresh database.",
+                    e
+                );
+                false
+            }
+        }
+    } else {
+        info!("Database exists and force restoration not requested, skipping restoration check");
+        false
+    };
+
     // Initialize the database
-    let db_pool = db::init_db().await.expect("Failed to initialize database");
-    println!("Database initialized successfully");
+    let db_pool = db::init_db(&config.backup.database_path)
+        .await
+        .expect("Failed to initialize database");
+    info!(
+        "Database initialized successfully (restored: {})",
+        restoration_performed
+    );
+
+    // Initialize backup infrastructure
+    let backup_status = create_shared_status();
+    let backup_manager = match create_storage_provider(&config.backup).await {
+        Ok(storage) => {
+            let manager = BackupManager::new(
+                db_pool.clone(),
+                storage.into(),
+                &config.backup.environment,
+                config.backup.server_id.as_deref(),
+                backup_status.clone(),
+            );
+            info!("Backup manager initialized successfully");
+            Some(Arc::new(manager))
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize backup infrastructure: {}", e);
+            None
+        }
+    };
+
+    // Create shutdown manager if backup manager exists
+    let shutdown_manager = backup_manager
+        .as_ref()
+        .map(|manager| Arc::new(ShutdownManager::new(manager.clone())));
+
+    // Create backup scheduler if backup manager exists
+    let backup_scheduler = if let Some(ref manager) = backup_manager {
+        let scheduler = Arc::new(BackupScheduler::new(manager.clone(), backup_status.clone()));
+
+        // Start the scheduler with configured interval
+        let interval = Duration::from_secs(config.backup.backup_interval_seconds);
+        let options = BackupOptions::default();
+
+        match scheduler.start(interval, options).await {
+            Ok(_) => {
+                tracing::info!(
+                    "Backup scheduler started with interval: {} seconds",
+                    config.backup.backup_interval_seconds
+                );
+
+                // Set scheduler reference in shutdown manager
+                if let Some(ref shutdown_mgr) = shutdown_manager {
+                    shutdown_mgr.set_scheduler(scheduler.clone()).await;
+                }
+
+                Some(scheduler)
+            }
+            Err(e) => {
+                tracing::error!("Failed to start backup scheduler: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Create the application state
     let state = Arc::new(AppState {
         templates: env,
         db_pool,
+        backup_manager,
+        backup_scheduler,
     });
 
     // Set up the routes
@@ -113,7 +246,30 @@ async fn main() {
         .route("/users/list", get(list_users_handler))
         .with_state(state);
 
-    println!("Server starting on http://0.0.0.0:8080");
+    // Set up signal handlers if we have a shutdown manager
+    let shutdown_signal = if let Some(ref shutdown_mgr) = shutdown_manager {
+        info!("Setting up signal handlers for graceful shutdown");
+        setup_signal_handlers(shutdown_mgr.clone()).await;
+        Some(shutdown_mgr.get_shutdown_signal())
+    } else {
+        None
+    };
+
+    info!("Server starting on http://0.0.0.0:8080");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+
+    // Run the server with graceful shutdown if shutdown manager is available
+    if let Some(signal) = shutdown_signal {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                signal.notified().await;
+                info!("Graceful shutdown complete");
+            })
+            .await
+            .unwrap();
+    } else {
+        axum::serve(listener, app).await.unwrap();
+    }
+
+    info!("Server shut down");
 }
