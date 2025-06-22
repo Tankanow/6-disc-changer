@@ -8,7 +8,7 @@ cargo-run:
 .PHONY: docker-run
 docker-run: docker-stop
 	docker build -t six-disc-changer .
-	docker run -p 8080:8080 --env PORT=8080 --name $(LOCAL_CONTAINER_NAME) six-disc-changer
+	docker run -p 8080:8080 --env PORT=8080 --env-file .env --name $(LOCAL_CONTAINER_NAME) six-disc-changer
 
 .PHONY: docker-stop
 docker-stop:
@@ -22,6 +22,13 @@ fly-deploy:
 .PHONY: aws-login
 aws-login:
 	@echo 'aws.login 6-disc-changer.AdministratorAccess'
+
+.PHONY: aws-login
+aws-assume-role:
+	@aws sts assume-role --role-arn arn:aws:iam::214549340182:role/six-disc-changer-backup-restore-dev --role-session-name cli-test-session \
+      | jq -r '.Credentials \
+      | "AWS_ACCESS_KEY_ID=\(.AccessKeyId)\nAWS_SECRET_ACCESS_KEY=\(.SecretAccessKey)\nAWS_SESSION_TOKEN=\(.SessionToken)"'
+
 
 .PHONY: pulumi-login
 pulumi-login:

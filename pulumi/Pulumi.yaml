@@ -1,6 +1,11 @@
 name: sqlite-backup-restore
 runtime: yaml
 description: AWS infrastructure for SQLite database backup and restore system
+variables:
+  accountId:
+    fn::invoke:
+      function: aws:getCallerIdentity
+      return: accountId
 resources:
   # OIDC Provider for fly.io
   flyIoOidcProvider:
@@ -64,6 +69,13 @@ resources:
                   "oidc.fly.io/${flyOrgSlug}:sub": "app:${flyAppName}"
                 }
               }
+            },
+            {
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::${accountId}:root"
+            },
+            "Action": "sts:AssumeRole"
             }
           ]
         }
