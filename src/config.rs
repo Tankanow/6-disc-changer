@@ -2,6 +2,49 @@ use std::env;
 use std::path::PathBuf;
 use tracing::error;
 
+/// Configuration for Spotify OAuth integration
+#[derive(Debug, Clone)]
+pub struct SpotifyConfig {
+    /// Spotify OAuth client ID
+    pub client_id: String,
+    /// Spotify OAuth client secret
+    pub client_secret: String,
+}
+
+impl Default for SpotifyConfig {
+    fn default() -> Self {
+        Self {
+            client_id: String::new(),
+            client_secret: String::new(),
+        }
+    }
+}
+
+impl SpotifyConfig {
+    /// Load Spotify configuration from environment variables
+    pub fn from_env() -> Self {
+        let client_id = env::var("SPOTIFY_CLIENT_ID").unwrap_or_else(|_| {
+            error!("SPOTIFY_CLIENT_ID not set in environment");
+            String::new()
+        });
+
+        let client_secret = env::var("SPOTIFY_CLIENT_SECRET").unwrap_or_else(|_| {
+            error!("SPOTIFY_CLIENT_SECRET not set in environment");
+            String::new()
+        });
+
+        Self {
+            client_id,
+            client_secret,
+        }
+    }
+
+    /// Check if Spotify credentials are configured
+    pub fn is_configured(&self) -> bool {
+        !self.client_id.is_empty() && !self.client_secret.is_empty()
+    }
+}
+
 /// Configuration for database backup and restore functionality
 #[derive(Debug, Clone)]
 pub struct BackupConfig {
@@ -192,6 +235,8 @@ pub struct Config {
     pub port: u16,
     /// Host for the web server
     pub host: String,
+    /// Spotify OAuth configuration
+    pub spotify: SpotifyConfig,
 }
 
 impl Default for Config {
@@ -200,6 +245,7 @@ impl Default for Config {
             backup: BackupConfig::default(),
             port: 8080,
             host: String::from("0.0.0.0"),
+            spotify: SpotifyConfig::default(),
         }
     }
 }
@@ -216,6 +262,13 @@ impl Config {
 
         let host = env::var("HOST").unwrap_or_else(|_| String::from("0.0.0.0"));
 
-        Self { backup, port, host }
+        let spotify = SpotifyConfig::from_env();
+
+        Self {
+            backup,
+            port,
+            host,
+            spotify,
+        }
     }
 }
