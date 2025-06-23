@@ -53,6 +53,35 @@ impl SpotifyClientWrapper {
         client.get_authorize_url(None)
     }
 
+    /// Create a new OAuth flow with a fresh client instance
+    pub fn create_oauth_flow(&self) -> Result<(String, AuthCodePkceSpotify), ClientError> {
+        // Create a new client instance for this OAuth flow
+        let creds = Credentials::new_pkce(&self.client.creds.id);
+
+        let oauth = OAuth {
+            redirect_uri: self.redirect_uri.clone(),
+            scopes: scopes!(
+                "user-read-private",
+                "user-read-email",
+                "streaming",
+                "user-modify-playback-state",
+                "user-read-playback-state"
+            ),
+            ..Default::default()
+        };
+
+        let config = RSpotifyConfig {
+            ..Default::default()
+        };
+
+        let mut client = AuthCodePkceSpotify::with_config(creds, oauth, config);
+
+        // Generate the authorization URL (this also creates the code verifier)
+        let url = client.get_authorize_url(None)?;
+
+        Ok((url, client))
+    }
+
     /// Exchange authorization code for access and refresh tokens
     pub async fn exchange_code(&self, code: &str) -> Result<Token, ClientError> {
         let mut client = (*self.client).clone();

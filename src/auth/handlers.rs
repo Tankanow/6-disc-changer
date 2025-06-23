@@ -13,9 +13,10 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
 };
 use axum_extra::extract::cookie::CookieJar;
-use rspotify::{clients::OAuthClient, model::PrivateUser, prelude::Id};
+use rspotify::{AuthCodePkceSpotify, clients::OAuthClient, model::PrivateUser, prelude::Id};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::{error, info};
 
 /// State shared between handlers
@@ -23,6 +24,7 @@ use tracing::{error, info};
 pub struct AuthState {
     pub spotify_client: SpotifyClientWrapper,
     pub session_store: SessionStore,
+    pub oauth_flow_store: Arc<Mutex<HashMap<String, AuthCodePkceSpotify>>>,
     pub db_pool: DbPool,
     pub config: Config,
 }
@@ -46,20 +48,48 @@ pub struct UserInfo {
 /// Handler to initiate OAuth login flow
 #[axum::debug_handler]
 pub async fn auth_login(State(state): State<Arc<AuthState>>) -> impl IntoResponse {
-    match state.spotify_client.get_authorize_url() {
-        Ok(url) => {
-            info!("Redirecting to Spotify authorization URL");
-            Redirect::to(&url).into_response()
-        }
+    // Create a new client instance for this OAuth flow
+    let (url, client) = match state.spotify_client.create_oauth_flow() {
+        Ok(result) => result,
         Err(e) => {
             error!("Failed to generate authorization URL: {}", e);
-            (
+            return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Html("Failed to start login process. Please try again."),
             )
-                .into_response()
+                .into_response();
         }
-    }
+    };
+
+    // Extract state parameter from URL
+    let state_param = match url.split("state=").nth(1) {
+        Some(part) => match part.split('&').next() {
+            Some(state) => state.to_string(),
+            None => {
+                error!("Failed to extract state from URL");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html("Failed to start login process. Please try again."),
+                )
+                    .into_response();
+            }
+        },
+        None => {
+            error!("No state parameter in authorization URL");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html("Failed to start login process. Please try again."),
+            )
+                .into_response();
+        }
+    };
+
+    // Store the client using state as key
+    let mut flow_store = state.oauth_flow_store.lock().await;
+    flow_store.insert(state_param, client);
+
+    info!("Redirecting to Spotify authorization URL");
+    Redirect::to(&url).into_response()
 }
 
 /// Handler for OAuth callback
@@ -92,25 +122,63 @@ pub async fn auth_callback(
         }
     };
 
-    // Exchange code for tokens
-    let token = match state.spotify_client.exchange_code(&code).await {
-        Ok(token) => token,
-        Err(e) => {
-            error!("Failed to exchange code for token: {}", e);
+    // Get state parameter from callback
+    let state_param = match query.state {
+        Some(state) => state,
+        None => {
+            error!("No state parameter in callback");
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Html("Failed to complete authentication"),
+                StatusCode::BAD_REQUEST,
+                Html("Invalid authentication state"),
             )
                 .into_response();
         }
     };
 
-    // Create a new client with the token to get user info
-    let mut client_with_token = (*state.spotify_client.client()).clone();
-    *client_with_token.token.lock().await.unwrap() = Some(token.clone());
+    // Retrieve the client from the flow store
+    let mut client = {
+        let mut flow_store = state.oauth_flow_store.lock().await;
+        match flow_store.remove(&state_param) {
+            Some(client) => client,
+            None => {
+                error!("No OAuth flow found for state: {}", state_param);
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Html("Invalid or expired authentication session"),
+                )
+                    .into_response();
+            }
+        }
+    };
 
-    // Get user profile
-    let spotify_user: PrivateUser = match client_with_token.current_user().await {
+    // Exchange code for tokens using the same client instance
+    if let Err(e) = client.request_token(&code).await {
+        error!("Failed to exchange code for token: {}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html("Failed to complete authentication"),
+        )
+            .into_response();
+    }
+
+    // Get the token from the client
+    let token = {
+        let token_lock = client.token.lock().await.unwrap();
+        match token_lock.as_ref() {
+            Some(token) => token.clone(),
+            None => {
+                error!("No token received after exchange");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html("Failed to receive authentication token"),
+                )
+                    .into_response();
+            }
+        }
+    };
+
+    // Get user profile using the authenticated client
+    let spotify_user: PrivateUser = match client.current_user().await {
         Ok(user) => user,
         Err(e) => {
             error!("Failed to get user profile: {}", e);

@@ -262,6 +262,7 @@ async fn main() {
         Arc::new(AuthState {
             spotify_client: client,
             session_store: session_store.clone(),
+            oauth_flow_store: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             db_pool: db_pool.clone(),
             config: config.clone(),
         })
