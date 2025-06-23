@@ -9,6 +9,8 @@ pub struct SpotifyConfig {
     pub client_id: String,
     /// Spotify OAuth client secret
     pub client_secret: String,
+    /// OAuth redirect URI
+    pub redirect_uri: String,
 }
 
 impl Default for SpotifyConfig {
@@ -16,6 +18,7 @@ impl Default for SpotifyConfig {
         Self {
             client_id: String::new(),
             client_secret: String::new(),
+            redirect_uri: String::from("http://127.0.0.1:8080/auth/callback"),
         }
     }
 }
@@ -33,9 +36,13 @@ impl SpotifyConfig {
             String::new()
         });
 
+        let redirect_uri = env::var("SPOTIFY_REDIRECT_URI")
+            .unwrap_or_else(|_| String::from("http://127.0.0.1:8080/auth/callback"));
+
         Self {
             client_id,
             client_secret,
+            redirect_uri,
         }
     }
 
@@ -237,6 +244,8 @@ pub struct Config {
     pub host: String,
     /// Spotify OAuth configuration
     pub spotify: SpotifyConfig,
+    /// Session secret for cookie signing
+    pub session_secret: String,
 }
 
 impl Default for Config {
@@ -246,6 +255,7 @@ impl Default for Config {
             port: 8080,
             host: String::from("0.0.0.0"),
             spotify: SpotifyConfig::default(),
+            session_secret: String::from("change-me-in-production"),
         }
     }
 }
@@ -254,21 +264,25 @@ impl Config {
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
         let backup = BackupConfig::from_env();
-
         let port = env::var("PORT")
             .ok()
-            .and_then(|v| v.parse().ok())
+            .and_then(|p| p.parse().ok())
             .unwrap_or(8080);
-
         let host = env::var("HOST").unwrap_or_else(|_| String::from("0.0.0.0"));
-
         let spotify = SpotifyConfig::from_env();
+        let session_secret = env::var("SESSION_SECRET").unwrap_or_else(|_| {
+            tracing::warn!(
+                "SESSION_SECRET not set, using default. This is insecure for production!"
+            );
+            String::from("change-me-in-production")
+        });
 
         Self {
             backup,
             port,
             host,
             spotify,
+            session_secret,
         }
     }
 }

@@ -70,7 +70,8 @@ pub async fn get_user_by_spotify_username(
 ) -> Result<Option<User>, sqlx::Error> {
     let row = sqlx::query(
         r#"
-        SELECT id, spotify_username, created_at, updated_at
+        SELECT id, spotify_username, created_at, updated_at,
+               access_token, refresh_token, token_expires_at, token_scopes
         FROM users
         WHERE spotify_username = ?
         "#,
@@ -85,6 +86,10 @@ pub async fn get_user_by_spotify_username(
             spotify_username: row.try_get("spotify_username")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
+            access_token: row.try_get("access_token")?,
+            refresh_token: row.try_get("refresh_token")?,
+            token_expires_at: row.try_get("token_expires_at")?,
+            token_scopes: row.try_get("token_scopes")?,
         }))
     } else {
         Ok(None)
@@ -115,7 +120,8 @@ pub async fn create_user(pool: &DbPool, spotify_username: &str) -> Result<User, 
 pub async fn get_all_users(pool: &DbPool) -> Result<Vec<User>, sqlx::Error> {
     let rows = sqlx::query(
         r#"
-        SELECT id, spotify_username, created_at, updated_at
+        SELECT id, spotify_username, created_at, updated_at,
+               access_token, refresh_token, token_expires_at, token_scopes
         FROM users
         ORDER BY id
         "#,
@@ -130,10 +136,75 @@ pub async fn get_all_users(pool: &DbPool) -> Result<Vec<User>, sqlx::Error> {
             spotify_username: row.try_get("spotify_username")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
+            access_token: row.try_get("access_token")?,
+            refresh_token: row.try_get("refresh_token")?,
+            token_expires_at: row.try_get("token_expires_at")?,
+            token_scopes: row.try_get("token_scopes")?,
         });
     }
 
     Ok(users)
+}
+
+/// Update OAuth tokens for a user
+pub async fn update_user_tokens(
+    pool: &DbPool,
+    user_id: i64,
+    access_token: &str,
+    refresh_token: Option<&str>,
+    expires_at: chrono::DateTime<chrono::Utc>,
+    scopes: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE users
+        SET access_token = ?,
+            refresh_token = ?,
+            token_expires_at = ?,
+            token_scopes = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        "#,
+    )
+    .bind(access_token)
+    .bind(refresh_token)
+    .bind(expires_at)
+    .bind(scopes)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get a user by ID
+pub async fn get_user_by_id(pool: &DbPool, user_id: i64) -> Result<Option<User>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, spotify_username, created_at, updated_at,
+               access_token, refresh_token, token_expires_at, token_scopes
+        FROM users
+        WHERE id = ?
+        "#,
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(row) = row {
+        Ok(Some(User {
+            id: row.try_get("id")?,
+            spotify_username: row.try_get("spotify_username")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+            access_token: row.try_get("access_token")?,
+            refresh_token: row.try_get("refresh_token")?,
+            token_expires_at: row.try_get("token_expires_at")?,
+            token_scopes: row.try_get("token_scopes")?,
+        }))
+    } else {
+        Ok(None)
+    }
 }
 
 // User model
@@ -143,6 +214,10 @@ pub struct User {
     pub spotify_username: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub token_scopes: Option<String>,
 }
 
 // Implement FromRow for User to allow for conversion from database rows
@@ -153,6 +228,10 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for User {
             spotify_username: row.try_get("spotify_username")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
+            access_token: row.try_get("access_token")?,
+            refresh_token: row.try_get("refresh_token")?,
+            token_expires_at: row.try_get("token_expires_at")?,
+            token_scopes: row.try_get("token_scopes")?,
         })
     }
 }

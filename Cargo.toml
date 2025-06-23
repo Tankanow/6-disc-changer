@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-axum = "0.8.4"
+axum = { version = "0.8.4", features = ["macros"] }
 tokio = { version = "1.45.1", features = [
     "macros",
     "rt-multi-thread",
@@ -35,6 +35,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # SQLite dependencies
 tempfile = "3.5.0"
 rand = "0.8.5"
+# Spotify and OAuth dependencies
+rspotify = { version = "0.14", features = ["client-reqwest", "env-file"] }
+# Session management dependencies
+tower-sessions = "0.13"
+axum-extra = { version = "0.10", features = ["cookie"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+time = "0.3"
 
 [dev-dependencies]
 mockall = "0.11.4"

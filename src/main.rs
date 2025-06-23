@@ -11,11 +11,15 @@ use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod auth;
 mod config;
 mod database;
 mod db;
 mod shutdown;
 
+use auth::{
+    AuthState, SessionStore, SpotifyClientWrapper, auth_callback, auth_login, auth_logout, auth_me,
+};
 use config::Config;
 use database::{
     BackupManager, BackupScheduler, RestorationChecker, backup::BackupOptions,
@@ -30,6 +34,7 @@ struct AppState {
     db_pool: db::DbPool,
     backup_manager: Option<Arc<BackupManager>>,
     backup_scheduler: Option<Arc<BackupScheduler>>,
+    session_store: SessionStore,
 }
 
 // Handler for the index route
@@ -229,22 +234,62 @@ async fn main() {
         None
     };
 
+    // Initialize session store
+    let session_store = SessionStore::new();
+
+    // Initialize Spotify client if configured
+    let spotify_client = if config.spotify.is_configured() {
+        Some(SpotifyClientWrapper::new(
+            config.spotify.client_id.clone(),
+            config.spotify.redirect_uri.clone(),
+        ))
+    } else {
+        tracing::warn!("Spotify credentials not configured, OAuth features will be disabled");
+        None
+    };
+
     // Create the application state
     let state = Arc::new(AppState {
         templates: env,
-        db_pool,
+        db_pool: db_pool.clone(),
         backup_manager,
         backup_scheduler,
+        session_store: session_store.clone(),
     });
 
-    // Set up the routes
-    let app = Router::new()
+    // Create auth state if Spotify is configured
+    let auth_state = spotify_client.map(|client| {
+        Arc::new(AuthState {
+            spotify_client: client,
+            session_store: session_store.clone(),
+            db_pool: db_pool.clone(),
+            config: config.clone(),
+        })
+    });
+
+    // Set up the main routes
+    let mut app = Router::new()
         .route("/", get(index_handler))
         .route("/about", get(about_handler))
         .route("/users", get(users_handler))
         .route("/users", post(add_user_handler))
         .route("/users/list", get(list_users_handler))
-        .with_state(state);
+        .with_state(state.clone());
+
+    // Add auth routes if Spotify is configured
+    if let Some(auth_state) = auth_state {
+        let auth_routes = Router::new()
+            .route("/auth/login", get(auth_login))
+            .route("/auth/callback", get(auth_callback))
+            .route("/auth/logout", get(auth_logout))
+            .route("/auth/me", get(auth_me))
+            .with_state(auth_state);
+
+        app = app.merge(auth_routes);
+    }
+
+    // Add middleware
+    // Cookie handling is now done via axum-extra
 
     // Set up signal handlers if we have a shutdown manager
     let shutdown_signal = if let Some(ref shutdown_mgr) = shutdown_manager {

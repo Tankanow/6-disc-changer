@@ -1,0 +1,3 @@
+- YES. You may PROCEED with implementation.
+- You MUST ONLY MODIFY/CREATE files listed above.
+- You MUST continue until `cargo run` and `cargo test` complete successfully.

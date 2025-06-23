@@ -7,7 +7,7 @@
 
 - [ ] 1.0 Set up Spotify OAuth Authentication
   - [x] 1.1 Register application with Spotify Developer Dashboard and obtain client ID/secret
-  - [ ] 1.2 Implement OAuth 2.0 authorization code flow with PKCE
+  - [x] 1.2 Implement OAuth 2.0 authorization code flow with PKCE
   - [ ] 1.3 Create login page with "Login with Spotify" button
   - [ ] 1.4 Handle OAuth callback and token exchange
   - [ ] 1.5 Implement token refresh mechanism for expired access tokens
